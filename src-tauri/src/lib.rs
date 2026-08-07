@@ -264,12 +264,75 @@ fn unique_destination(folder: &Path, file_name: &str) -> PathBuf {
 fn move_file(source: &Path, destination: &Path) -> Result<(), std::io::Error> {
     fs::rename(source, destination).or_else(|_| {
         fs::copy(source, destination)?;
-        fs::remove_file(source)
+        if let Err(error) = fs::remove_file(source) {
+            let _ = fs::remove_file(destination);
+            return Err(error);
+        }
+        Ok(())
     })
 }
 
 fn is_app_undoable(action: &str) -> bool {
-    matches!(action, "move" | "stage_trash")
+    matches!(action, "move" | "stage_trash" | "trash")
+}
+
+fn windows_path_key(path: &Path) -> String {
+    let value = path.to_string_lossy().replace('/', "\\");
+    let value = value
+        .strip_prefix(r"\\?\UNC\")
+        .map(|path| format!(r"\\{path}"))
+        .or_else(|| value.strip_prefix(r"\\?\").map(str::to_owned))
+        .unwrap_or(value);
+    value.trim_end_matches('\\').to_lowercase()
+}
+
+fn find_recycle_item(
+    items: Vec<trash::TrashItem>,
+    staged_path: &Path,
+    recycle_id: Option<&str>,
+) -> Option<trash::TrashItem> {
+    if let Some(recycle_id) = recycle_id {
+        if let Some(item) = items
+            .iter()
+            .find(|item| item.id.to_string_lossy() == recycle_id)
+        {
+            return Some(item.clone());
+        }
+    }
+
+    let staged_key = windows_path_key(staged_path);
+    items
+        .into_iter()
+        .filter(|item| windows_path_key(&item.original_path()) == staged_key)
+        .max_by_key(|item| item.time_deleted)
+}
+
+fn restore_recycled_file(
+    original_path: &Path,
+    staged_path: &Path,
+    recycle_id: Option<&str>,
+) -> Result<(), SiftError> {
+    if original_path.exists() {
+        return Err(SiftError::Message(
+            "The original path is already occupied".into(),
+        ));
+    }
+
+    if !staged_path.exists() {
+        let item = find_recycle_item(trash::os_limited::list()?, staged_path, recycle_id)
+            .ok_or_else(|| {
+                SiftError::Message("This file is no longer in the Windows Recycle Bin".into())
+            })?;
+        trash::os_limited::restore_all([item])?;
+    }
+
+    if !staged_path.is_file() {
+        return Err(SiftError::Message(
+            "Windows did not restore the file from the Recycle Bin".into(),
+        ));
+    }
+    move_file(staged_path, original_path)?;
+    Ok(())
 }
 
 fn trash_entry(
@@ -317,6 +380,31 @@ fn record_operation(
     Ok(db.last_insert_rowid())
 }
 
+fn record_moved_operation(
+    state: &AppState,
+    action: &str,
+    source: &Path,
+    destination: &Path,
+) -> Result<i64, SiftError> {
+    let result = state
+        .db
+        .lock()
+        .map_err(|_| SiftError::Message("History database is unavailable".into()))
+        .and_then(|db| record_operation(&db, action, source, Some(destination), true));
+
+    match result {
+        Ok(operation_id) => Ok(operation_id),
+        Err(error) => {
+            move_file(destination, source).map_err(|rollback_error| {
+                SiftError::Message(format!(
+                    "Could not save the action ({error}), and could not restore the file ({rollback_error})"
+                ))
+            })?;
+            Err(error)
+        }
+    }
+}
+
 #[tauri::command]
 fn move_download(
     source: String,
@@ -337,11 +425,7 @@ fn move_download(
         .ok_or_else(|| SiftError::Message("Invalid file name".into()))?;
     let target = unique_destination(&destination_dir, file_name);
     move_file(&source_path, &target)?;
-    let db = state
-        .db
-        .lock()
-        .map_err(|_| SiftError::Message("History database is unavailable".into()))?;
-    let operation_id = record_operation(&db, "move", &source_path, Some(&target), true)?;
+    let operation_id = record_moved_operation(&state, "move", &source_path, &target)?;
     Ok(OperationResult {
         operation_id,
         source,
@@ -369,11 +453,7 @@ fn trash_download(
         .ok_or_else(|| SiftError::Message("Invalid file name".into()))?;
     let staged = unique_destination(&trash_dir, file_name);
     move_file(&source, &staged)?;
-    let db = state
-        .db
-        .lock()
-        .map_err(|_| SiftError::Message("History database is unavailable".into()))?;
-    let operation_id = record_operation(&db, "stage_trash", &source, Some(&staged), true)?;
+    let operation_id = record_moved_operation(&state, "stage_trash", &source, &staged)?;
     Ok(OperationResult {
         operation_id,
         source: path,
@@ -399,23 +479,26 @@ fn list_trash(state: State<'_, AppState>) -> Result<Vec<TrashEntry>, SiftError> 
             row.get::<_, String>(2)?,
         ))
     })?;
+    let rows = rows.collect::<Result<Vec<_>, _>>()?;
     Ok(rows
-        .filter_map(Result::ok)
+        .into_iter()
         .filter_map(|(id, source, destination)| trash_entry(id, source, destination))
         .collect())
 }
 
 #[tauri::command]
 fn finalize_trash(operation_id: i64, state: State<'_, AppState>) -> Result<(), SiftError> {
-    let db = state
-        .db
-        .lock()
-        .map_err(|_| SiftError::Message("History database is unavailable".into()))?;
-    let (action, destination, undone): (String, Option<String>, bool) = db.query_row(
-        "SELECT action, destination, undone FROM operations WHERE id = ?1",
-        [operation_id],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-    )?;
+    let (action, destination, undone): (String, Option<String>, bool) = {
+        let db = state
+            .db
+            .lock()
+            .map_err(|_| SiftError::Message("History database is unavailable".into()))?;
+        db.query_row(
+            "SELECT action, destination, undone FROM operations WHERE id = ?1",
+            [operation_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?
+    };
     if action != "stage_trash" || undone {
         return Err(SiftError::Message(
             "This Trash item is no longer pending".into(),
@@ -424,26 +507,55 @@ fn finalize_trash(operation_id: i64, state: State<'_, AppState>) -> Result<(), S
     let staged = PathBuf::from(
         destination.ok_or_else(|| SiftError::Message("Trash location is missing".into()))?,
     );
+    let previous_items = trash::os_limited::list().unwrap_or_default();
     trash::delete(&staged)?;
+    let recycle_id = trash::os_limited::list().ok().and_then(|items| {
+        let staged_key = windows_path_key(&staged);
+        items
+            .into_iter()
+            .filter(|item| windows_path_key(&item.original_path()) == staged_key)
+            .filter(|item| !previous_items.iter().any(|previous| previous.id == item.id))
+            .max_by_key(|item| item.time_deleted)
+            .map(|item| item.id.to_string_lossy().into_owned())
+    });
+    let db = state
+        .db
+        .lock()
+        .map_err(|_| SiftError::Message("History database is unavailable".into()))?;
     db.execute(
-        "UPDATE operations SET action = 'trash', destination = NULL, undoable = 0 WHERE id = ?1",
-        [operation_id],
+        "UPDATE operations SET action = 'trash', undoable = 1, recycle_id = ?2 WHERE id = ?1",
+        params![operation_id, recycle_id],
     )?;
     Ok(())
 }
 
 #[tauri::command]
 fn undo_operation(operation_id: i64, state: State<'_, AppState>) -> Result<(), SiftError> {
-    let db = state
-        .db
-        .lock()
-        .map_err(|_| SiftError::Message("History database is unavailable".into()))?;
-    let (action, source, destination, undone): (String, String, Option<String>, bool) = db
-        .query_row(
-            "SELECT action, source, destination, undone FROM operations WHERE id = ?1",
+    let (action, source, destination, recycle_id, undone): (
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        bool,
+    ) = {
+        let db = state
+            .db
+            .lock()
+            .map_err(|_| SiftError::Message("History database is unavailable".into()))?;
+        db.query_row(
+            "SELECT action, source, destination, recycle_id, undone FROM operations WHERE id = ?1",
             [operation_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-        )?;
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
+        )?
+    };
     if undone {
         return Err(SiftError::Message("This action was already undone".into()));
     }
@@ -458,6 +570,25 @@ fn undo_operation(operation_id: i64, state: State<'_, AppState>) -> Result<(), S
             ));
         }
         move_file(&from, &to)?;
+        let db = state
+            .db
+            .lock()
+            .map_err(|_| SiftError::Message("History database is unavailable".into()))?;
+        db.execute(
+            "UPDATE operations SET undone = 1 WHERE id = ?1",
+            [operation_id],
+        )?;
+        return Ok(());
+    }
+    if action == "trash" {
+        let staged = PathBuf::from(
+            destination.ok_or_else(|| SiftError::Message("Trash location is missing".into()))?,
+        );
+        restore_recycled_file(Path::new(&source), &staged, recycle_id.as_deref())?;
+        let db = state
+            .db
+            .lock()
+            .map_err(|_| SiftError::Message("History database is unavailable".into()))?;
         db.execute(
             "UPDATE operations SET undone = 1 WHERE id = ?1",
             [operation_id],
@@ -465,9 +596,7 @@ fn undo_operation(operation_id: i64, state: State<'_, AppState>) -> Result<(), S
         return Ok(());
     }
     if !is_app_undoable(&action) {
-        return Err(SiftError::Message(
-            "This file has left Sift Trash. Restore it from the Windows Recycle Bin instead".into(),
-        ));
+        return Err(SiftError::Message("This action cannot be undone".into()));
     }
     let from = PathBuf::from(
         destination.ok_or_else(|| SiftError::Message("Move destination is missing".into()))?,
@@ -478,7 +607,11 @@ fn undo_operation(operation_id: i64, state: State<'_, AppState>) -> Result<(), S
             "The original path is already occupied".into(),
         ));
     }
-    fs::rename(from, to)?;
+    move_file(&from, &to)?;
+    let db = state
+        .db
+        .lock()
+        .map_err(|_| SiftError::Message("History database is unavailable".into()))?;
     db.execute(
         "UPDATE operations SET undone = 1 WHERE id = ?1",
         [operation_id],
@@ -576,23 +709,29 @@ fn initialise_database(path: &Path) -> Result<Connection, rusqlite::Error> {
            action TEXT NOT NULL,
            source TEXT NOT NULL,
            destination TEXT,
+           recycle_id TEXT,
            created_at INTEGER NOT NULL,
            undoable INTEGER NOT NULL DEFAULT 0,
            undone INTEGER NOT NULL DEFAULT 0
-         );
-         CREATE TABLE IF NOT EXISTS rules (
-           id INTEGER PRIMARY KEY AUTOINCREMENT,
-           name TEXT NOT NULL,
-           condition_type TEXT NOT NULL,
-           condition_value TEXT NOT NULL,
-           action_type TEXT NOT NULL,
-           destination TEXT,
-           priority INTEGER NOT NULL,
-           enabled INTEGER NOT NULL DEFAULT 1
          );",
     )?;
+    let has_recycle_id = {
+        let mut statement = connection.prepare("PRAGMA table_info(operations)")?;
+        let columns = statement.query_map([], |row| row.get::<_, String>(1))?;
+        let mut found = false;
+        for column in columns {
+            if column? == "recycle_id" {
+                found = true;
+                break;
+            }
+        }
+        found
+    };
+    if !has_recycle_id {
+        connection.execute("ALTER TABLE operations ADD COLUMN recycle_id TEXT", [])?;
+    }
     connection.execute(
-        "UPDATE operations SET undoable = 0 WHERE action = 'trash'",
+        "UPDATE operations SET undoable = 1 WHERE action = 'trash' AND undone = 0 AND destination IS NOT NULL",
         [],
     )?;
     Ok(connection)
@@ -629,16 +768,55 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::is_app_undoable;
+    use super::{
+        find_recycle_item, is_app_undoable, restore_recycled_file, unix_millis, windows_path_key,
+    };
+    use std::{fs, path::Path, time::SystemTime};
 
     #[test]
     fn staged_trash_and_moves_are_undoable_in_sift() {
         assert!(is_app_undoable("stage_trash"));
         assert!(is_app_undoable("move"));
+        assert!(is_app_undoable("trash"));
     }
 
     #[test]
-    fn recycled_trash_is_not_undoable_in_sift() {
-        assert!(!is_app_undoable("trash"));
+    fn recycle_paths_ignore_extended_prefix_and_case() {
+        assert_eq!(
+            windows_path_key(Path::new(r"\\?\C:\Users\Brian\Downloads\File.txt")),
+            windows_path_key(Path::new(r"c:\users\brian\downloads\file.txt"))
+        );
+    }
+
+    #[test]
+    #[ignore = "temporarily uses the Windows Recycle Bin"]
+    fn recycled_file_round_trip_restores_the_original_path() {
+        let root = std::env::temp_dir().join(format!(
+            "sift-recycle-restore-{}",
+            unix_millis(SystemTime::now())
+        ));
+        fs::create_dir(&root).expect("create recycle restore test folder");
+        let staged = root.join("staged.txt");
+        let original = root.join("original.txt");
+        fs::write(&staged, "Sift recycle restore test").expect("create recycle restore test file");
+
+        trash::delete(&staged).expect("send test file to Recycle Bin");
+        let recycled = find_recycle_item(
+            trash::os_limited::list().expect("list Recycle Bin"),
+            &staged,
+            None,
+        )
+        .expect("find the recycled test file");
+        let recycle_id = recycled.id.to_string_lossy().into_owned();
+
+        restore_recycled_file(&original, &staged, Some(&recycle_id))
+            .expect("restore test file through Sift");
+        assert_eq!(
+            fs::read_to_string(&original).expect("read restored test file"),
+            "Sift recycle restore test"
+        );
+
+        fs::remove_file(original).expect("remove restored test file");
+        fs::remove_dir(root).expect("remove recycle restore test folder");
     }
 }

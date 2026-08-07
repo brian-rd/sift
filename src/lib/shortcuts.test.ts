@@ -3,7 +3,12 @@ import { DEFAULT_SHORTCUTS, isBindableCode, shortcutLabel } from './shortcuts';
 
 describe('shortcut preferences', () => {
   it('uses the intended four-direction default layout', () => {
-    expect(DEFAULT_SHORTCUTS).toEqual({ keep: 'ArrowUp', trash: 'ArrowDown', undo: 'ArrowLeft', fileAway: 'ArrowRight' });
+    expect(DEFAULT_SHORTCUTS).toEqual({
+      keep: 'ArrowUp',
+      trash: 'ArrowDown',
+      undo: 'ArrowLeft',
+      fileAway: 'ArrowRight',
+    });
   });
 
   it('formats arrows, letter keys and digit keys for display', () => {

@@ -37,8 +37,9 @@ export type ShortcutAction = 'keep' | 'trash' | 'undo' | 'fileAway';
 export type ShortcutBindings = Record<ShortcutAction, string>;
 export type ThemePreference = 'system' | 'light' | 'dark';
 
-export type RuleConditionType = 'extension' | 'contains' | 'startsWith' | 'endsWith' | 'glob' | 'regex' | 'size' | 'age';
-export type RuleActionType = 'move' | 'rename' | 'trash' | 'ignore' | 'review';
+export type RuleConditionType =
+  'extension' | 'contains' | 'startsWith' | 'endsWith' | 'glob' | 'regex' | 'size' | 'age';
+export type RuleActionType = 'move' | 'trash' | 'ignore';
 
 export interface Rule {
   id: string;
@@ -48,13 +49,12 @@ export interface Rule {
   actionType: RuleActionType;
   destination?: string;
   enabled: boolean;
-  matches: number;
 }
 
 export interface HistoryItem {
   id: string;
   fileName: string;
-  action: 'Moved' | 'Kept' | 'Trashed' | 'Review later' | 'Renamed';
+  action: 'Moved' | 'Kept' | 'Trashed';
   destination?: string;
   timestamp: number;
   session: string;

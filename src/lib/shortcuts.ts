@@ -4,7 +4,7 @@ export const DEFAULT_SHORTCUTS: ShortcutBindings = {
   keep: 'ArrowUp',
   trash: 'ArrowDown',
   undo: 'ArrowLeft',
-  fileAway: 'ArrowRight'
+  fileAway: 'ArrowRight',
 };
 
 const labels: Record<string, string> = {
@@ -15,7 +15,7 @@ const labels: Record<string, string> = {
   Space: 'Space',
   Enter: 'Enter',
   Backspace: 'Backspace',
-  Delete: 'Delete'
+  Delete: 'Delete',
 };
 
 export function shortcutLabel(code: string) {
@@ -23,5 +23,17 @@ export function shortcutLabel(code: string) {
 }
 
 export function isBindableCode(code: string) {
-  return !['Escape', 'Tab', 'CapsLock', 'ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight', 'AltLeft', 'AltRight', 'MetaLeft', 'MetaRight'].includes(code);
+  return ![
+    'Escape',
+    'Tab',
+    'CapsLock',
+    'ShiftLeft',
+    'ShiftRight',
+    'ControlLeft',
+    'ControlRight',
+    'AltLeft',
+    'AltRight',
+    'MetaLeft',
+    'MetaRight',
+  ].includes(code);
 }

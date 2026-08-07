@@ -28,9 +28,17 @@ export function ruleMatches(file: DownloadFile, rule: Rule, now = Date.now()): b
     case 'endsWith':
       return name.endsWith(valueLower);
     case 'glob':
-      try { return globToRegExp(value).test(file.name); } catch { return false; }
+      try {
+        return globToRegExp(value).test(file.name);
+      } catch {
+        return false;
+      }
     case 'regex':
-      try { return new RegExp(value, 'i').test(file.name); } catch { return false; }
+      try {
+        return new RegExp(value, 'i').test(file.name);
+      } catch {
+        return false;
+      }
     case 'size': {
       const megabytes = Number(value);
       return Number.isFinite(megabytes) && file.size > megabytes * 1_000_000;

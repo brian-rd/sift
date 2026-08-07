@@ -1,3 +1,4 @@
+import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import type { PinnedDestination, ScanResult, TrashItem } from './types';
 
 export const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -8,8 +9,7 @@ export interface OperationResult {
   destination?: string;
 }
 
-async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
-  const { invoke: tauriInvoke } = await import('@tauri-apps/api/core');
+function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   return tauriInvoke<T>(command, args);
 }
 

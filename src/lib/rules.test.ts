@@ -9,11 +9,11 @@ const file: DownloadFile = {
   size: 12_000_000,
   modifiedAt: Date.now() - 40 * 86_400_000,
   createdAt: Date.now() - 45 * 86_400_000,
-  kind: 'pdf'
+  kind: 'pdf',
 };
 
 function rule(conditionType: RuleConditionType, conditionValue: string, id: string = conditionType): Rule {
-  return { id, name: id, conditionType, conditionValue, actionType: 'move', enabled: true, matches: 0 };
+  return { id, name: id, conditionType, conditionValue, actionType: 'move', enabled: true };
 }
 
 describe('ruleMatches', () => {
@@ -25,7 +25,7 @@ describe('ruleMatches', () => {
     ['glob', 'REPORT-*.pdf'],
     ['regex', '^report-[A-Z][0-9]\\.pdf$'],
     ['size', '10'],
-    ['age', '30']
+    ['age', '30'],
   ] as const)('matches the %s condition', (type, value) => {
     expect(ruleMatches(file, rule(type, value))).toBe(true);
   });
@@ -35,7 +35,10 @@ describe('ruleMatches', () => {
   });
 
   it('uses the first enabled rule only', () => {
-    const results = evaluateRules([file], [rule('extension', 'pdf', 'first'), rule('contains', 'report', 'second')]);
+    const results = evaluateRules(
+      [file],
+      [rule('extension', 'pdf', 'first'), rule('contains', 'report', 'second')],
+    );
     expect(results).toHaveLength(1);
     expect(results[0].rule.id).toBe('first');
   });
