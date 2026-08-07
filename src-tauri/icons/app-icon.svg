@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">Sift app icon</title>
+  <rect width="512" height="512" rx="112" fill="#292b26"/>
+  <path d="M138 139c0-15.5 12.5-28 28-28h180c15.5 0 28 12.5 28 28v30H138v-30Z" fill="#85877e"/>
+  <path d="M116 189c0-15.5 12.5-28 28-28h224c15.5 0 28 12.5 28 28v31H116v-31Z" fill="#b8b8b0"/>
+  <rect x="94" y="211" width="324" height="211" rx="32" fill="#f4f3ef"/>
+  <path d="M153 277h134" stroke="#292b26" stroke-width="26" stroke-linecap="round"/>
+  <path d="M153 335h89" stroke="#c55c39" stroke-width="26" stroke-linecap="round"/>
+  <path d="m317 310 27 27 55-64" fill="none" stroke="#5d8667" stroke-width="25" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
