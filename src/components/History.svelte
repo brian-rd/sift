@@ -13,6 +13,7 @@
   $: sessions = [...new Set(visible.map((item) => item.session))];
 
   const iconFor = (action: HistoryItem['action']) => action === 'Trashed' ? Trash2 : action === 'Moved' ? FolderInput : action === 'Renamed' ? FileInput : action === 'Kept' ? Check : Clock3;
+  const canUndo = (item: HistoryItem) => item.undoable && (item.action !== 'Trashed' || item.trashState === 'staged');
 </script>
 
 <PageHeader eyebrow="Your safety net" title="History" description="Staged Trash and file moves can be reversed here. Finalized Trash is managed by Windows." />
@@ -27,7 +28,7 @@
 {:else}
   {#each sessions as session}
     <section class="session">
-      <header><div><p class="eyebrow">Sift session</p><h2>{session}</h2></div><button on:click={() => onUndoSession(session)} disabled={!items.some((item) => item.session === session && item.undoable)}><RotateCcw size={14} /> Undo session</button></header>
+      <header><div><p class="eyebrow">Sift session</p><h2>{session}</h2></div><button on:click={() => onUndoSession(session)} disabled={!items.some((item) => item.session === session && canUndo(item))}><RotateCcw size={14} /> Undo session</button></header>
       <div class="history-list">
         {#each visible.filter((item) => item.session === session) as item}
           {@const Icon = iconFor(item.action)}
@@ -35,7 +36,7 @@
             <span class:trash={item.action === 'Trashed'} class="action-icon"><Icon size={17} /></span>
             <div class="file"><strong>{item.fileName}</strong><span>{formatDate(item.timestamp)}</span></div>
             <div class="result"><span>{item.action}</span>{#if item.destination}<strong>{item.destination}</strong>{/if}</div>
-            {#if item.undoable}<button class="undo" on:click={() => onUndo(item.id)}><RotateCcw size={13} /> Undo</button>{:else if item.trashState === 'recycled'}<button class="undo" on:click={onOpenRecycleBin}><ExternalLink size={13} /> Recycle Bin</button>{:else}<span class="settled">No change</span>{/if}
+            {#if canUndo(item)}<button class="undo" on:click={() => onUndo(item.id)}><RotateCcw size={13} /> Undo</button>{:else if item.action === 'Trashed'}<button class="undo" on:click={onOpenRecycleBin}><ExternalLink size={13} /> Recycle Bin</button>{:else}<span class="settled">No change</span>{/if}
           </article>
         {/each}
       </div>

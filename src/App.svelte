@@ -134,6 +134,7 @@
 
   async function undoLatest(): Promise<DownloadFile | null> {
     const item = history.find((entry) => entry.undoable);
+    if (!item && trashItems.length) return (await restoreTrash([trashItems[0].operationId]))[0] ?? null;
     if (!item) { notify('Nothing to undo'); return null; }
     return undoItem(item.id);
   }
@@ -141,6 +142,14 @@
   async function undoItem(id: string): Promise<DownloadFile | null> {
     const item = history.find((entry) => entry.id === id);
     if (!item) return null;
+    if (item.action === 'Trashed') {
+      const operationId = item.backendOperationId;
+      if (item.trashState !== 'staged' || !operationId || !trashItems.some((entry) => entry.operationId === operationId)) {
+        notify('This file has left Sift Trash. Restore it from the Windows Recycle Bin.');
+        return null;
+      }
+      return (await restoreTrash([operationId]))[0] ?? null;
+    }
     try {
       if (isTauri && item.backendOperationId) await undoOperation(item.backendOperationId);
     } catch (error) { notify(`Could not undo ${item.fileName}: ${error}`); return null; }
@@ -152,7 +161,7 @@
   }
 
   async function undoSession(session: string) {
-    const entries = history.filter((item) => item.session === session && item.undoable);
+    const entries = history.filter((item) => item.session === session && item.undoable && (item.action !== 'Trashed' || item.trashState === 'staged'));
     const restored: DownloadFile[] = [];
     try {
       for (const item of entries) {
@@ -216,8 +225,8 @@
     return isTauri && ['image', 'pdf', 'video', 'audio'].includes(item.kind) ? { ...file, previewUrl: convertFileSrc(item.originalPath) } : file;
   }
 
-  async function restoreTrash(operationIds: number[]) {
-    if (!operationIds.length || trashBusy) return;
+  async function restoreTrash(operationIds: number[]): Promise<DownloadFile[]> {
+    if (!operationIds.length || trashBusy) return [];
     trashBusy = true;
     const restored: DownloadFile[] = [];
     let failure: unknown;
@@ -237,6 +246,7 @@
     }
     if (failure) notify(`${restored.length ? `Restored ${restored.length}; ` : ''}could not restore every file: ${failure}`);
     else if (restored.length) notify(`Restored ${restored.length} ${restored.length === 1 ? 'file' : 'files'} from Trash`);
+    return restored;
   }
 
   async function recycleTrash(operationIds: number[]) {

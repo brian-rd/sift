@@ -268,14 +268,8 @@ fn move_file(source: &Path, destination: &Path) -> Result<(), std::io::Error> {
     })
 }
 
-fn comparable_windows_path(path: &Path) -> String {
-    let raw = path.to_string_lossy().replace('/', "\\");
-    let normalized = if let Some(rest) = raw.strip_prefix(r"\\?\UNC\") {
-        format!(r"\\{rest}")
-    } else {
-        raw.strip_prefix(r"\\?\").unwrap_or(&raw).to_owned()
-    };
-    normalized.trim_end_matches('\\').to_lowercase()
+fn is_app_undoable(action: &str) -> bool {
+    matches!(action, "move" | "stage_trash")
 }
 
 fn trash_entry(
@@ -432,7 +426,7 @@ fn finalize_trash(operation_id: i64, state: State<'_, AppState>) -> Result<(), S
     );
     trash::delete(&staged)?;
     db.execute(
-        "UPDATE operations SET action = 'trash', destination = NULL WHERE id = ?1",
+        "UPDATE operations SET action = 'trash', destination = NULL, undoable = 0 WHERE id = ?1",
         [operation_id],
     )?;
     Ok(())
@@ -470,23 +464,10 @@ fn undo_operation(operation_id: i64, state: State<'_, AppState>) -> Result<(), S
         )?;
         return Ok(());
     }
-    if action == "trash" {
-        let source_path = PathBuf::from(&source);
-        let comparable_source = comparable_windows_path(&source_path);
-        let item = trash::os_limited::list()?
-            .into_iter()
-            .filter(|item| comparable_windows_path(&item.original_path()) == comparable_source)
-            .max_by_key(|item| item.time_deleted)
-            .ok_or_else(|| SiftError::Message("The file is no longer in the Recycle Bin".into()))?;
-        trash::os_limited::restore_all([item])?;
-        db.execute(
-            "UPDATE operations SET undone = 1 WHERE id = ?1",
-            [operation_id],
-        )?;
-        return Ok(());
-    }
-    if action != "move" {
-        return Err(SiftError::Message("This action cannot be undone".into()));
+    if !is_app_undoable(&action) {
+        return Err(SiftError::Message(
+            "This file has left Sift Trash. Restore it from the Windows Recycle Bin instead".into(),
+        ));
     }
     let from = PathBuf::from(
         destination.ok_or_else(|| SiftError::Message("Move destination is missing".into()))?,
@@ -610,6 +591,10 @@ fn initialise_database(path: &Path) -> Result<Connection, rusqlite::Error> {
            enabled INTEGER NOT NULL DEFAULT 1
          );",
     )?;
+    connection.execute(
+        "UPDATE operations SET undoable = 0 WHERE action = 'trash'",
+        [],
+    )?;
     Ok(connection)
 }
 
@@ -644,22 +629,16 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::comparable_windows_path;
-    use std::path::Path;
+    use super::is_app_undoable;
 
     #[test]
-    fn compares_extended_and_standard_drive_paths_equally() {
-        assert_eq!(
-            comparable_windows_path(Path::new(r"\\?\C:\Users\Brian\Downloads\file.txt")),
-            comparable_windows_path(Path::new(r"C:\Users\Brian\Downloads\file.txt"))
-        );
+    fn staged_trash_and_moves_are_undoable_in_sift() {
+        assert!(is_app_undoable("stage_trash"));
+        assert!(is_app_undoable("move"));
     }
 
     #[test]
-    fn compares_extended_and_standard_unc_paths_equally() {
-        assert_eq!(
-            comparable_windows_path(Path::new(r"\\?\UNC\server\share\file.txt")),
-            comparable_windows_path(Path::new(r"\\server\share\file.txt"))
-        );
+    fn recycled_trash_is_not_undoable_in_sift() {
+        assert!(!is_app_undoable("trash"));
     }
 }
