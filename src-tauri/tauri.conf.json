@@ -35,6 +35,6 @@
     "targets": ["nsis"],
     "category": "Utility",
     "shortDescription": "A fast, safe Downloads organiser",
-    "longDescription": "Sift combines automatic rules with rapid keyboard triage to keep your Downloads folder organised."
+    "longDescription": "Sift combines automatic rules with a rapid keyboard-first workflow to keep your Downloads folder organised."
   }
 }
