@@ -8,6 +8,7 @@ const file: DownloadFile = {
   extension: 'pdf',
   size: 12_000_000,
   modifiedAt: Date.now() - 40 * 86_400_000,
+  createdAt: Date.now() - 45 * 86_400_000,
   kind: 'pdf'
 };
 

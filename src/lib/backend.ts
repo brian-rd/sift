@@ -1,4 +1,4 @@
-import type { ScanResult } from './types';
+import type { PinnedDestination, ScanResult } from './types';
 
 export const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
@@ -31,4 +31,8 @@ export async function revealDownload(path: string) {
 
 export async function undoOperation(operationId: number) {
   return invoke('undo_operation', { operationId });
+}
+
+export async function getDefaultDestinations() {
+  return invoke<PinnedDestination[]>('default_destinations');
 }

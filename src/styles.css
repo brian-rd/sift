@@ -1,3 +1,53 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700&display=swap');
 
-:root{font-family:'DM Sans',system-ui,sans-serif;color:#242520;background:#f4f3ef;font-synthesis:none;text-rendering:optimizeLegibility;--font-ui:'DM Sans',system-ui,sans-serif;--font-display:'Manrope','DM Sans',sans-serif;--font-mono:'DM Mono',monospace;--ink:#292b26;--text-2:#5f605a;--text-3:#8a8a83;--border:#deddd7;--border-strong:#cfcec7;--accent:#c55c39;--accent-hover:#ad4d2f;--green:#5d8667;line-height:1.5;font-weight:400}*{box-sizing:border-box}html,body,#app{margin:0;min-width:320px;min-height:100%;height:100%}body{background:#f4f3ef}.app-shell{display:flex;min-height:100vh}.content-shell{min-width:0;flex:1}.content-shell.triage-view{height:100vh}.page{width:min(1120px,100%);padding:34px 40px 60px;margin:0 auto}button,input,select{font:inherit}button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:3px solid rgba(197,92,57,.28);outline-offset:2px}.toast{position:fixed;z-index:200;bottom:22px;left:50%;transform:translateX(-50%);padding:10px 14px;border-radius:8px;background:#292b26;color:#fff;font-size:11px;box-shadow:0 8px 28px rgba(0,0,0,.18);animation:toast-in .2s ease-out}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}@keyframes toast-in{from{opacity:0;transform:translate(-50%,7px)}}@media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}@media(max-width:700px){.page{padding:26px 22px 90px}}@media(max-width:560px){.page{padding:22px 14px 88px}.app-shell{display:block}.content-shell.triage-view{height:auto;min-height:100vh}}
+:root {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  color: #242520;
+  background: #f4f3ef;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --font-ui: 'DM Sans', system-ui, sans-serif;
+  --font-display: 'Manrope', 'DM Sans', sans-serif;
+  --font-mono: 'DM Mono', monospace;
+  --bg: #f4f3ef;
+  --surface: #ffffff;
+  --surface-2: #ecece8;
+  --surface-3: #deded8;
+  --surface-overlay: rgba(255,255,255,.88);
+  --sidebar: #ecebe6;
+  --ink: #292b26;
+  --text-2: #5f605a;
+  --text-3: #7b7c75;
+  --border: #deddd7;
+  --border-strong: #bbb9b1;
+  --accent: #c55c39;
+  --accent-hover: #ad4d2f;
+  --green: #5d8667;
+  --success-bg: #edf4ee;
+  --success-strong: #dfece1;
+  --success-border: #cfdccf;
+  --success-text: #477354;
+  --danger-border: #cfa89f;
+  --danger-text: #9b4d3d;
+  --dock-bg: rgba(244,243,239,.92);
+  --primary-muted: #b7b7b0;
+  --shadow-lg: 0 18px 48px rgba(20,20,18,.16);
+  line-height: 1.5;
+  font-weight: 400;
+}
+
+* { box-sizing: border-box; }
+html, body, #app { margin: 0; min-width: 320px; min-height: 100%; height: 100%; }
+body { background: var(--bg); color: var(--ink); }
+.app-shell { display: flex; min-height: 100vh; }
+.content-shell { min-width: 0; flex: 1; }
+.content-shell.sift-view { height: 100vh; }
+.page { width: min(1120px,100%); padding: 34px 40px 60px; margin: 0 auto; }
+button, input, select { font: inherit; }
+button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible { outline: 3px solid rgba(197,92,57,.28); outline-offset: 2px; }
+.toast { position: fixed; z-index: 200; bottom: 22px; left: 50%; transform: translateX(-50%); padding: 10px 14px; border-radius: 8px; background: var(--ink); color: var(--bg); font-size: 11px; box-shadow: var(--shadow-lg); animation: toast-in .2s ease-out; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%,7px); } }
+@media (prefers-reduced-motion: reduce) { *, *:before, *:after { scroll-behavior: auto!important; animation-duration: .01ms!important; transition-duration: .01ms!important; } }
+@media (max-width: 700px) { .page { padding: 26px 22px 90px; } }
+@media (max-width: 560px) { .page { padding: 22px 14px 88px; } .app-shell { display: block; } .content-shell.sift-view { height: auto; min-height: 100vh; } }

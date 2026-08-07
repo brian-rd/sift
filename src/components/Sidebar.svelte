@@ -9,7 +9,7 @@
 
   const items: { id: Screen; label: string; icon: typeof LayoutDashboard }[] = [
     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
-    { id: 'triage', label: 'Triage', icon: Inbox },
+    { id: 'sift', label: 'Sift', icon: Inbox },
     { id: 'rules', label: 'Rules', icon: ListChecks },
     { id: 'history', label: 'History', icon: History },
     { id: 'settings', label: 'Settings', icon: Settings }
@@ -27,7 +27,7 @@
       <button class:active={active === item.id} on:click={() => onNavigate(item.id)} aria-current={active === item.id ? 'page' : undefined} title={compact ? item.label : undefined}>
         <svelte:component this={item.icon} size={18} strokeWidth={2} />
         <span>{item.label}</span>
-        {#if item.id === 'triage' && reviewCount > 0}<span class="count">{reviewCount}</span>{/if}
+        {#if item.id === 'sift' && reviewCount > 0}<span class="count">{reviewCount}</span>{/if}
       </button>
     {/each}
   </nav>

@@ -9,7 +9,7 @@
   export let scanning: boolean;
   export let isDemo: boolean;
   export let onScan: () => void;
-  export let onTriage: () => void;
+  export let onSift: () => void;
   export let onRules: () => void;
   export let onPreviewRules: () => void;
 
@@ -30,7 +30,7 @@
     <span class="hero-kicker"><Inbox size={14} /> Ready to sort</span>
     <h2>{files.length} files are waiting</h2>
     <p>Work through them one at a time. Nothing moves until you choose.</p>
-    <button class="primary" on:click={onTriage}>Start triage <ArrowRight size={16} /></button>
+    <button class="primary" on:click={onSift}>Start sifting <ArrowRight size={16} /></button>
   </div>
   <div class="queue-visual" aria-hidden="true">
     <div class="sheet back"><span></span><span></span><span></span></div>
@@ -48,7 +48,7 @@
 
 <div class="dashboard-grid">
   <section class="panel recent-panel">
-    <div class="section-heading"><div><p class="eyebrow">Incoming</p><h2>Recent files</h2></div><button class="text-button" on:click={onTriage}>Review all <ArrowRight size={14} /></button></div>
+    <div class="section-heading"><div><p class="eyebrow">Incoming</p><h2>Recent files</h2></div><button class="text-button" on:click={onSift}>Review all <ArrowRight size={14} /></button></div>
     <div class="file-list">
       {#each recent as file}
         <div class="file-row">

@@ -26,7 +26,7 @@
     </section>
 
     <section>
-      <header><span><Pin size={18} /></span><div><h2>Pinned destinations</h2><p>Use number keys 1–9 to move files here during triage.</p></div></header>
+      <header><span><Pin size={18} /></span><div><h2>Pinned destinations</h2><p>Use number keys 1–9 to move files here while sifting.</p></div></header>
       <div class="pinned-list">
         {#each pinned as folder, index}<div><kbd>{index + 1}</kbd><Folder size={15} /><strong>{folder}</strong><button on:click={() => pinned = pinned.filter((item) => item !== folder)} aria-label={`Remove ${folder}`}><X size={14} /></button></div>{/each}
         <button class="add-folder" on:click={() => pinned = [...pinned, `Folder ${pinned.length + 1}`]} disabled={pinned.length >= 9}><Plus size={14} /> Add folder</button>

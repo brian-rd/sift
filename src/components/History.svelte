@@ -26,7 +26,7 @@
 {:else}
   {#each sessions as session}
     <section class="session">
-      <header><div><p class="eyebrow">Triage session</p><h2>{session}</h2></div><button on:click={() => onUndoSession(session)} disabled={!items.some((item) => item.session === session && item.undoable)}><RotateCcw size={14} /> Undo session</button></header>
+      <header><div><p class="eyebrow">Sift session</p><h2>{session}</h2></div><button on:click={() => onUndoSession(session)} disabled={!items.some((item) => item.session === session && item.undoable)}><RotateCcw size={14} /> Undo session</button></header>
       <div class="history-list">
         {#each visible.filter((item) => item.session === session) as item}
           {@const Icon = iconFor(item.action)}

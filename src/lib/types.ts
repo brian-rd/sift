@@ -1,4 +1,4 @@
-export type Screen = 'dashboard' | 'triage' | 'rules' | 'history' | 'settings';
+export type Screen = 'dashboard' | 'sift' | 'rules' | 'history' | 'settings';
 
 export type FileKind = 'image' | 'pdf' | 'archive' | 'video' | 'audio' | 'text' | 'other';
 
@@ -8,11 +8,21 @@ export interface DownloadFile {
   extension: string;
   size: number;
   modifiedAt: number;
+  createdAt: number;
   kind: FileKind;
   suggestedFolder?: string;
+  suggestedFolders?: string[];
   matchedRule?: string;
   previewUrl?: string;
 }
+
+export interface PinnedDestination {
+  name: string;
+  path: string;
+}
+
+export type ShortcutAction = 'keep' | 'trash' | 'undo' | 'fileAway';
+export type ShortcutBindings = Record<ShortcutAction, string>;
 
 export type RuleConditionType = 'extension' | 'contains' | 'startsWith' | 'endsWith' | 'glob' | 'regex' | 'size' | 'age';
 export type RuleActionType = 'move' | 'rename' | 'trash' | 'ignore' | 'review';
@@ -37,6 +47,7 @@ export interface HistoryItem {
   session: string;
   undoable: boolean;
   backendOperationId?: number;
+  file?: DownloadFile;
 }
 
 export interface ScanResult {
