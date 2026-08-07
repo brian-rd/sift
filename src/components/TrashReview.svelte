@@ -3,6 +3,7 @@
   import type { TrashItem } from '../lib/types';
   import { formatBytes, formatDate } from '../lib/format';
   import FileIcon from './FileIcon.svelte';
+  import Tooltip from './Tooltip.svelte';
 
   export let items: TrashItem[];
   export let intent: 'review' | 'overview' | 'exit';
@@ -45,7 +46,7 @@
   <div class="trash-dialog" role="dialog" aria-modal="true" aria-labelledby="trash-title">
     <header class="dialog-header">
       <div class="title-block"><span class="title-icon"><Trash2 size={20} /></span><div><p>{intent === 'review' ? 'Sift Trash' : 'Before you go'}</p><h2 id="trash-title">Review Trash</h2><span>{items.length} {items.length === 1 ? 'file is' : 'files are'} waiting for your decision.</span></div></div>
-      <button class="icon-button" on:click={onClose} aria-label="Close Trash" title="Close Trash"><X size={18} /></button>
+      <Tooltip text="Close Trash" placement="bottom"><button class="icon-button" on:click={onClose} aria-label="Close Trash"><X size={18} /></button></Tooltip>
     </header>
 
     {#if items.length > 0}
@@ -58,7 +59,7 @@
           <article role="group" aria-label={item.name} on:contextmenu={(event) => showContextMenu(event, item)}>
             <label class="select-file" aria-label={`Select ${item.name}`}><input type="checkbox" checked={selected.includes(item.operationId)} on:change={() => toggle(item.operationId)} /></label>
             <FileIcon kind={item.kind} extension={item.extension} />
-            <div class="file-copy"><strong title={item.name}>{item.name}</strong><span>{formatBytes(item.size)} · Modified {formatDate(item.modifiedAt)}</span><small title={item.originalPath}>{item.originalPath}</small></div>
+            <div class="file-copy"><Tooltip text={item.name}><strong>{item.name}</strong></Tooltip><span>{formatBytes(item.size)} · Modified {formatDate(item.modifiedAt)}</span><Tooltip text={item.originalPath}><small>{item.originalPath}</small></Tooltip></div>
             <button class="restore" on:click={() => onRestore([item.operationId])} disabled={busy}><RotateCcw size={14} /> Undo</button>
           </article>
         {/each}
