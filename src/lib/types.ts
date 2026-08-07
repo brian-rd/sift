@@ -2,6 +2,15 @@ export type Screen = 'dashboard' | 'sift' | 'rules' | 'history' | 'settings';
 
 export type FileKind = 'image' | 'pdf' | 'archive' | 'video' | 'audio' | 'text' | 'other';
 
+export type FileSortField = 'modifiedAt' | 'createdAt' | 'name' | 'size' | 'type';
+export type SortDirection = 'asc' | 'desc';
+
+export interface SiftQueuePreferences {
+  sortBy: FileSortField;
+  direction: SortDirection;
+  includedKinds: FileKind[];
+}
+
 export interface DownloadFile {
   path: string;
   name: string;
