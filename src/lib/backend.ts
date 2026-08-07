@@ -37,6 +37,10 @@ export async function revealDownload(path: string) {
   return invoke('reveal_download', { path });
 }
 
+export async function openDownload(path: string) {
+  return invoke('open_download', { path });
+}
+
 export async function openRecycleBin() {
   return invoke('open_recycle_bin');
 }
@@ -51,4 +55,8 @@ export async function getDefaultDestinations() {
 
 export async function readTextPreview(path: string) {
   return invoke<string>('read_text_preview', { path });
+}
+
+export async function getUserDisplayName() {
+  return invoke<string>('user_display_name');
 }

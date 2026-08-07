@@ -12,6 +12,10 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use tauri::{Manager, State};
+use windows::{
+    core::PWSTR,
+    Win32::Security::Authentication::Identity::{GetUserNameExW, NameDisplay},
+};
 
 struct AppState {
     db: Mutex<Connection>,
@@ -207,7 +211,7 @@ fn scan_downloads(folder: Option<String>, app: tauri::AppHandle) -> Result<ScanR
 
 #[tauri::command]
 fn read_text_preview(path: String, app: tauri::AppHandle) -> Result<String, SiftError> {
-    const PREVIEW_LIMIT: u64 = 64 * 1024;
+    const PREVIEW_LIMIT: u64 = 256 * 1024;
     let file = PathBuf::from(path).canonicalize()?;
     let metadata = file.symlink_metadata()?;
     let extension = file
@@ -511,6 +515,52 @@ fn reveal_download(path: String) -> Result<(), SiftError> {
 }
 
 #[tauri::command]
+fn open_download(path: String) -> Result<(), SiftError> {
+    let file = PathBuf::from(path).canonicalize()?;
+    if !file.is_file() || file.symlink_metadata()?.file_type().is_symlink() {
+        return Err(SiftError::Message(
+            "Only regular files can be opened".into(),
+        ));
+    }
+    Command::new("explorer").arg(file).spawn()?;
+    Ok(())
+}
+
+#[tauri::command]
+fn user_display_name() -> String {
+    let mut length = 0u32;
+    unsafe { GetUserNameExW(NameDisplay, None, &mut length) };
+    if length > 0 {
+        let mut buffer = vec![0u16; length as usize];
+        if unsafe { GetUserNameExW(NameDisplay, Some(PWSTR(buffer.as_mut_ptr())), &mut length) } {
+            let end = buffer
+                .iter()
+                .position(|value| *value == 0)
+                .unwrap_or(buffer.len());
+            if let Some(first_name) = String::from_utf16_lossy(&buffer[..end])
+                .split_whitespace()
+                .next()
+            {
+                if !first_name.is_empty() {
+                    return first_name.to_owned();
+                }
+            }
+        }
+    }
+    std::env::var("USERNAME")
+        .ok()
+        .filter(|name| !name.trim().is_empty())
+        .map(|name| {
+            let mut characters = name.chars();
+            characters
+                .next()
+                .map(|first| first.to_uppercase().collect::<String>() + characters.as_str())
+                .unwrap_or_default()
+        })
+        .unwrap_or_default()
+}
+
+#[tauri::command]
 fn open_recycle_bin() -> Result<(), SiftError> {
     Command::new("explorer")
         .arg("shell:RecycleBinFolder")
@@ -583,7 +633,9 @@ pub fn run() {
             finalize_trash,
             undo_operation,
             reveal_download,
+            open_download,
             open_recycle_bin,
+            user_display_name,
             default_destinations
         ])
         .run(tauri::generate_context!())

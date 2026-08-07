@@ -13,8 +13,9 @@
   import type { DownloadFile, HistoryItem, PinnedDestination, Rule, Screen, ShortcutBindings, ThemePreference, TrashItem } from './lib/types';
   import type { RuleMatch } from './lib/rules';
   import { demoFiles, demoHistory, demoRules } from './lib/demo';
-  import { finalizeTrash, getDefaultDestinations, isTauri, listTrash, moveDownload, openRecycleBin, readTextPreview, revealDownload, scanDownloads, trashDownload, undoOperation } from './lib/backend';
+  import { finalizeTrash, getDefaultDestinations, getUserDisplayName, isTauri, listTrash, moveDownload, openDownload, openRecycleBin, readTextPreview, revealDownload, scanDownloads, trashDownload, undoOperation } from './lib/backend';
   import { DEFAULT_SHORTCUTS } from './lib/shortcuts';
+  import { personalisedGreeting } from './lib/greeting';
 
   const demoDestinations: PinnedDestination[] = [
     { name: 'Documents', path: 'Documents' },
@@ -40,6 +41,10 @@
   let trashIntent: 'review' | 'overview' | 'exit' = 'review';
   let trashBusy = false;
   let allowWindowClose = false;
+  let userName = '';
+  let currentHour = new Date().getHours();
+
+  $: greeting = personalisedGreeting(currentHour, userName);
 
   function notify(message: string) {
     toast = message;
@@ -215,6 +220,7 @@
     if (!operationIds.length || trashBusy) return;
     trashBusy = true;
     const restored: DownloadFile[] = [];
+    let failure: unknown;
     try {
       for (const operationId of operationIds) {
         const item = trashItems.find((entry) => entry.operationId === operationId);
@@ -224,27 +230,34 @@
         trashItems = trashItems.filter((entry) => entry.operationId !== operationId);
         history = history.filter((entry) => entry.backendOperationId !== operationId);
       }
+    } catch (error) { failure = error; }
+    finally {
       files = [...restored.filter((restoredFile) => !files.some((file) => file.path === restoredFile.path)), ...files];
-      if (restored.length) notify(`Restored ${restored.length} ${restored.length === 1 ? 'file' : 'files'} from Trash`);
-    } catch (error) { notify(`Could not restore from Trash: ${error}`); }
-    finally { trashBusy = false; }
+      trashBusy = false;
+    }
+    if (failure) notify(`${restored.length ? `Restored ${restored.length}; ` : ''}could not restore every file: ${failure}`);
+    else if (restored.length) notify(`Restored ${restored.length} ${restored.length === 1 ? 'file' : 'files'} from Trash`);
   }
 
   async function recycleTrash(operationIds: number[]) {
     if (!operationIds.length || trashBusy) return;
     trashBusy = true;
     const recycled: number[] = [];
+    let failure: unknown;
     try {
       for (const operationId of operationIds) {
         if (isTauri) await finalizeTrash(operationId);
         recycled.push(operationId);
         trashItems = trashItems.filter((entry) => entry.operationId !== operationId);
       }
+    } catch (error) { failure = error; }
+    finally {
       const recycledIds = new Set(recycled);
       history = history.map((entry) => recycledIds.has(entry.backendOperationId ?? -1) ? { ...entry, undoable: false, trashState: 'recycled' } : entry);
-      if (recycled.length) notify(`Moved ${recycled.length} ${recycled.length === 1 ? 'file' : 'files'} to the Windows Recycle Bin`);
-    } catch (error) { notify(`Could not move every file to the Recycle Bin: ${error}`); }
-    finally { trashBusy = false; }
+      trashBusy = false;
+    }
+    if (failure) notify(`${recycled.length ? `Recycled ${recycled.length}; ` : ''}could not move every file: ${failure}`);
+    else if (recycled.length) notify(`Moved ${recycled.length} ${recycled.length === 1 ? 'file' : 'files'} to the Windows Recycle Bin`);
   }
 
   function reviewTrash(intent: 'review' | 'overview' | 'exit' = 'review') {
@@ -266,9 +279,14 @@
     }
   }
 
-  async function openFile(file: DownloadFile) {
+  async function revealFile(file: DownloadFile) {
     if (!isTauri) return notify(`File Explorer would reveal ${file.name}`);
     try { await revealDownload(file.path); } catch (error) { notify(`Could not show file: ${error}`); }
+  }
+
+  async function openFile(file: DownloadFile) {
+    if (!isTauri) return notify(`${file.name} would open in its default Windows app`);
+    try { await openDownload(file.path); } catch (error) { notify(`Could not open file: ${error}`); }
   }
 
   async function showRecycleBin() {
@@ -277,13 +295,14 @@
   }
 
   async function loadTextPreview(file: DownloadFile) {
-    if (!isTauri) return `Preview of ${file.name}\n\nThis is example text shown in browser demo mode. The installed Windows app reads up to 64 KB directly from the selected file.`;
+    if (!isTauri) return file.extension === 'md' ? '# Sift preview\n\nMarkdown is rendered with **headings**, lists, links, quotes, and code blocks.\n\n- Local only\n- Up to 256 KB\n- Safe, escaped content\n\n> Your files never leave this computer.' : `This is example text shown in browser demo mode.\n\nThe installed Windows app reads up to 256 KB directly from the selected file, preserving line breaks and making more of the content visible without repeating the file name.`;
     return readTextPreview(file.path);
   }
 
   onMount(() => {
     const colourQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handleSystemTheme = () => { if (theme === 'system') applyTheme('system'); };
+    const greetingTimer = setInterval(() => currentHour = new Date().getHours(), 60_000);
     let removeCloseListener: (() => void) | undefined;
     colourQuery.addEventListener('change', handleSystemTheme);
 
@@ -315,6 +334,7 @@
         try { pinnedDestinations = await getDefaultDestinations(); } catch { pinnedDestinations = []; }
       }
       if (isTauri) {
+        try { userName = await getUserDisplayName(); } catch { userName = ''; }
         try { trashItems = await listTrash(); } catch { trashItems = []; }
         await scan();
       }
@@ -322,6 +342,7 @@
 
     return () => {
       colourQuery.removeEventListener('change', handleSystemTheme);
+      clearInterval(greetingTimer);
       removeCloseListener?.();
     };
   });
@@ -331,9 +352,9 @@
   {#if active !== 'sift'}<Sidebar {active} onNavigate={(screen) => active = screen} onWatchedFolder={() => active = 'settings'} reviewCount={files.length} />{/if}
   <div class:sift-view={active === 'sift'} class="content-shell">
     {#if active === 'dashboard'}
-      <main class="page"><Dashboard {files} {scanning} isDemo={!isTauri} onScan={scan} onSift={() => active = 'sift'} onRules={() => active = 'rules'} onPreviewRules={() => active = 'rules'} /></main>
+      <main class="page"><Dashboard {files} {scanning} isDemo={!isTauri} {greeting} onScan={scan} onSift={() => active = 'sift'} onRules={() => active = 'rules'} onPreviewRules={() => active = 'rules'} /></main>
     {:else if active === 'sift'}
-      <SiftMode {files} {pinnedDestinations} {shortcuts} trashCount={trashItems.length} {getSuggestions} onAction={siftAction} onPickDestination={pickDestination} onBack={requestOverview} onOpen={openFile} onUndo={undoLatest} onViewTrash={() => reviewTrash('review')} onLoadText={loadTextPreview} />
+      <SiftMode {files} {pinnedDestinations} {shortcuts} trashCount={trashItems.length} {getSuggestions} onAction={siftAction} onPickDestination={pickDestination} onBack={requestOverview} onOpen={openFile} onReveal={revealFile} onUndo={undoLatest} onViewTrash={() => reviewTrash('review')} onLoadText={loadTextPreview} />
     {:else if active === 'rules'}
       <main class="page"><Rules {rules} {files} onUpdate={(next) => rules = next} onRun={runRules} /></main>
     {:else if active === 'history'}

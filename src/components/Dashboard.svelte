@@ -8,6 +8,7 @@
   export let files: DownloadFile[];
   export let scanning: boolean;
   export let isDemo: boolean;
+  export let greeting: string;
   export let onScan: () => void;
   export let onSift: () => void;
   export let onRules: () => void;
@@ -19,7 +20,7 @@
   $: recent = [...files].sort((a, b) => b.modifiedAt - a.modifiedAt).slice(0, 5);
 </script>
 
-<PageHeader eyebrow="Downloads, under control" title="Good morning" description="A quick look at what is waiting in your Downloads folder." {scanning} {onScan} />
+<PageHeader eyebrow="Downloads, under control" title={greeting} description="A quick look at what is waiting in your Downloads folder." {scanning} {onScan} />
 
 {#if isDemo}
   <div class="demo-banner"><Sparkles size={15} /><span><strong>Preview mode.</strong> Connect the desktop app to scan your real Downloads folder.</span></div>
