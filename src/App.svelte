@@ -423,7 +423,7 @@
   {#if active !== 'sift'}<Sidebar {active} {watchEnabled} onNavigate={(screen) => active = screen} onWatchedFolder={() => active = 'settings'} reviewCount={files.length} />{/if}
   <div class:sift-view={active === 'sift'} class="content-shell">
     {#if active === 'dashboard'}
-      <main class="page"><Dashboard {files} {scanning} isDemo={!isTauri} {greeting} onScan={() => scan()} onSift={() => active = 'sift'} onRules={() => active = 'rules'} onPreviewRules={() => active = 'rules'} /></main>
+      <main class="page"><Dashboard {files} {rules} {scanning} isDemo={!isTauri} {greeting} onScan={() => scan()} onSift={() => active = 'sift'} onRules={() => active = 'rules'} onPreviewRules={() => active = 'rules'} /></main>
     {:else if active === 'sift'}
       <SiftMode {files} {pinnedDestinations} {shortcuts} {trashImmediately} trashCount={trashItems.length} {getSuggestions} onAction={siftAction} onPickDestination={pickDestination} onBack={requestOverview} onOpen={openFile} onReveal={revealFile} onUndo={undoLatest} onViewTrash={() => reviewTrash('review')} onLoadText={loadTextPreview} />
     {:else if active === 'rules'}
