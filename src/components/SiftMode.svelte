@@ -2,6 +2,7 @@
   import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronLeft, ExternalLink, FolderInput, Keyboard, RotateCcw, Trash2, Undo2, X } from '@lucide/svelte';
   import type { DownloadFile, PinnedDestination, ShortcutBindings } from '../lib/types';
   import { formatBytes, formatDate } from '../lib/format';
+  import { shortcutLabel } from '../lib/shortcuts';
   import FileIcon from './FileIcon.svelte';
 
   export let files: DownloadFile[];
@@ -37,8 +38,6 @@
     textPreview = '';
     textPreviewError = '';
   }
-
-  const keyLabel = (code: string) => ({ ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→' })[code] ?? code.replace(/^Key/, '');
 
   async function loadText(file: DownloadFile) {
     previewPath = file.path;
@@ -122,7 +121,7 @@
       <div class="progress-copy"><strong>{Math.min(processed + 1, total)} of {total}</strong><span>{progress}% complete</span></div>
       <div class="progress" role="progressbar" aria-label="Sifting progress" aria-valuenow={progress} aria-valuemin="0" aria-valuemax="100"><span style={`width:${progress}%`}></span></div>
     </div>
-    <button class="undo-top" on:click={undo} disabled={busy}><Undo2 size={15} /> Undo <kbd>{keyLabel(shortcuts.undo)}</kbd></button>
+    <button class="undo-top" on:click={undo} disabled={busy}><Undo2 size={15} /> Undo <kbd>{shortcutLabel(shortcuts.undo)}</kbd></button>
   </header>
 
   {#if restoredNotice}<div class="restore-toast" role="status"><RotateCcw size={15} /> {restoredNotice}</div>{/if}
@@ -185,10 +184,10 @@
     </main>
 
     <footer class="action-dock" aria-label="Sift actions">
-      <button class="action keep" on:click={() => commit('keep')} disabled={busy}><span>{keyLabel(shortcuts.keep)}</span><ArrowUp size={18} /><div><strong>Keep here</strong><small>Leave in Downloads</small></div></button>
-      <button class="action trash" on:click={() => commit('trash')} disabled={busy}><span>{keyLabel(shortcuts.trash)}</span><Trash2 size={18} /><div><strong>Trash</strong><small>Move to Recycle Bin</small></div></button>
-      <button class="action undo-action" on:click={undo} disabled={busy}><span>{keyLabel(shortcuts.undo)}</span><RotateCcw size={18} /><div><strong>Undo</strong><small>Restore the last file</small></div></button>
-      <button class="action file-away" on:click={fileAway} disabled={busy}><span>{keyLabel(shortcuts.fileAway)}</span><FolderInput size={18} /><div><strong>File Away</strong><small>{currentSuggestions.length === 1 ? currentSuggestions[0].name : currentSuggestions.length > 1 ? 'Choose a suggestion' : 'Choose a folder'}</small></div></button>
+      <button class="action keep" on:click={() => commit('keep')} disabled={busy}><span>{shortcutLabel(shortcuts.keep)}</span><ArrowUp size={18} /><div><strong>Keep here</strong><small>Leave in Downloads</small></div></button>
+      <button class="action trash" on:click={() => commit('trash')} disabled={busy}><span>{shortcutLabel(shortcuts.trash)}</span><Trash2 size={18} /><div><strong>Trash</strong><small>Move to Recycle Bin</small></div></button>
+      <button class="action undo-action" on:click={undo} disabled={busy}><span>{shortcutLabel(shortcuts.undo)}</span><RotateCcw size={18} /><div><strong>Undo</strong><small>Restore the last file</small></div></button>
+      <button class="action file-away" on:click={fileAway} disabled={busy}><span>{shortcutLabel(shortcuts.fileAway)}</span><FolderInput size={18} /><div><strong>File Away</strong><small>{currentSuggestions.length === 1 ? currentSuggestions[0].name : currentSuggestions.length > 1 ? 'Choose a suggestion' : 'Choose a folder'}</small></div></button>
     </footer>
   {/if}
 

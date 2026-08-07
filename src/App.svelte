@@ -8,12 +8,12 @@
   import Rules from './components/Rules.svelte';
   import History from './components/History.svelte';
   import Settings from './components/Settings.svelte';
-  import type { DownloadFile, HistoryItem, PinnedDestination, Rule, Screen, ShortcutBindings } from './lib/types';
+  import type { DownloadFile, HistoryItem, PinnedDestination, Rule, Screen, ShortcutBindings, ThemePreference } from './lib/types';
   import type { RuleMatch } from './lib/rules';
   import { demoFiles, demoHistory, demoRules } from './lib/demo';
   import { getDefaultDestinations, isTauri, moveDownload, readTextPreview, revealDownload, scanDownloads, trashDownload, undoOperation } from './lib/backend';
+  import { DEFAULT_SHORTCUTS } from './lib/shortcuts';
 
-  const defaultShortcuts: ShortcutBindings = { keep: 'ArrowUp', trash: 'ArrowDown', undo: 'ArrowLeft', fileAway: 'ArrowRight' };
   const demoDestinations: PinnedDestination[] = [
     { name: 'Documents', path: 'Documents' },
     { name: 'Pictures', path: 'Pictures' },
@@ -26,7 +26,8 @@
   let rules: Rule[] = isTauri ? [] : demoRules;
   let history: HistoryItem[] = isTauri ? [] : demoHistory;
   let pinnedDestinations: PinnedDestination[] = isTauri ? [] : demoDestinations;
-  let shortcuts: ShortcutBindings = defaultShortcuts;
+  let shortcuts: ShortcutBindings = { ...DEFAULT_SHORTCUTS };
+  let theme: ThemePreference = 'system';
   let rememberedDestinations: Record<string, PinnedDestination> = {};
   let watchedFolder = isTauri ? '' : 'C:\\Users\\you\\Downloads';
   let scanning = false;
@@ -37,6 +38,28 @@
     toast = message;
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => toast = '', 2600);
+  }
+
+  function applyTheme(preference: ThemePreference) {
+    const isDark = preference === 'dark' || (preference === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.dataset.theme = preference;
+    document.documentElement.dataset.colorScheme = isDark ? 'dark' : 'light';
+  }
+
+  function updateTheme(preference: ThemePreference) {
+    theme = preference;
+    localStorage.setItem('sift:theme', preference);
+    applyTheme(preference);
+  }
+
+  function updateShortcuts(next: ShortcutBindings) {
+    shortcuts = next;
+    localStorage.setItem('sift:shortcuts', JSON.stringify(next));
+  }
+
+  function updatePinnedDestinations(next: PinnedDestination[]) {
+    pinnedDestinations = next.slice(0, 9);
+    localStorage.setItem('sift:pinned-destinations', JSON.stringify(pinnedDestinations));
   }
 
   function destinationName(path: string) {
@@ -153,6 +176,18 @@
     return typeof selected === 'string' ? { name: destinationName(selected), path: selected } : null;
   }
 
+  async function addPinnedDestination() {
+    if (!isTauri) return notify('Pinned folders can be selected in the Windows app');
+    const selected = await open({ directory: true, multiple: false, title: 'Pin a destination in Sift' });
+    if (typeof selected !== 'string') return;
+    if (pinnedDestinations.some((destination) => destination.path.toLowerCase() === selected.toLowerCase())) return notify('That destination is already pinned');
+    updatePinnedDestinations([...pinnedDestinations, { name: destinationName(selected), path: selected }]);
+  }
+
+  function removePinnedDestination(destination: PinnedDestination) {
+    updatePinnedDestinations(pinnedDestinations.filter((item) => item.path !== destination.path));
+  }
+
   async function openFile(file: DownloadFile) {
     if (!isTauri) return notify(`File Explorer would reveal ${file.name}`);
     try { await revealDownload(file.path); } catch (error) { notify(`Could not show file: ${error}`); }
@@ -163,12 +198,34 @@
     return readTextPreview(file.path);
   }
 
-  onMount(async () => {
+  onMount(() => {
+    const colourQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleSystemTheme = () => { if (theme === 'system') applyTheme('system'); };
+    colourQuery.addEventListener('change', handleSystemTheme);
+
+    const storedTheme = localStorage.getItem('sift:theme');
+    theme = storedTheme === 'light' || storedTheme === 'dark' ? storedTheme : 'system';
+    applyTheme(theme);
     try { rememberedDestinations = JSON.parse(localStorage.getItem('sift:remembered-destinations') ?? '{}'); } catch { rememberedDestinations = {}; }
-    if (isTauri) {
-      try { pinnedDestinations = await getDefaultDestinations(); } catch { pinnedDestinations = []; }
-      await scan();
-    }
+    try {
+      const storedShortcuts = JSON.parse(localStorage.getItem('sift:shortcuts') ?? 'null');
+      if (storedShortcuts && ['keep', 'trash', 'undo', 'fileAway'].every((action) => typeof storedShortcuts[action] === 'string') && new Set(Object.values(storedShortcuts)).size === 4) shortcuts = storedShortcuts;
+    } catch { shortcuts = { ...DEFAULT_SHORTCUTS }; }
+
+    void (async () => {
+      let storedPinned: PinnedDestination[] | null = null;
+      try {
+        const parsed = JSON.parse(localStorage.getItem('sift:pinned-destinations') ?? 'null');
+        if (Array.isArray(parsed) && parsed.every((item) => typeof item?.name === 'string' && typeof item?.path === 'string')) storedPinned = parsed.slice(0, 9);
+      } catch { storedPinned = null; }
+      if (storedPinned) pinnedDestinations = storedPinned;
+      else if (isTauri) {
+        try { pinnedDestinations = await getDefaultDestinations(); } catch { pinnedDestinations = []; }
+      }
+      if (isTauri) await scan();
+    })();
+
+    return () => colourQuery.removeEventListener('change', handleSystemTheme);
   });
 </script>
 
@@ -184,7 +241,7 @@
     {:else if active === 'history'}
       <main class="page"><History items={history} onUndo={undoItem} onUndoSession={undoSession} /></main>
     {:else if active === 'settings'}
-      <main class="page"><Settings {watchedFolder} onFolderChange={(folder) => watchedFolder = folder} onPickFolder={pickWatchedFolder} /></main>
+      <main class="page"><Settings {watchedFolder} {theme} {shortcuts} {pinnedDestinations} onFolderChange={(folder) => watchedFolder = folder} onPickFolder={pickWatchedFolder} onThemeChange={updateTheme} onShortcutsChange={updateShortcuts} onAddPinned={addPinnedDestination} onRemovePinned={removePinnedDestination} /></main>
     {/if}
   </div>
 </div>

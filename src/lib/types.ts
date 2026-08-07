@@ -23,6 +23,7 @@ export interface PinnedDestination {
 
 export type ShortcutAction = 'keep' | 'trash' | 'undo' | 'fileAway';
 export type ShortcutBindings = Record<ShortcutAction, string>;
+export type ThemePreference = 'system' | 'light' | 'dark';
 
 export type RuleConditionType = 'extension' | 'contains' | 'startsWith' | 'endsWith' | 'glob' | 'regex' | 'size' | 'age';
 export type RuleActionType = 'move' | 'rename' | 'trash' | 'ignore' | 'review';
