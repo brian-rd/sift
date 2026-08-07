@@ -19,25 +19,26 @@ On Windows, install the [Tauri 2 prerequisites](https://v2.tauri.app/start/prere
 corepack pnpm tauri dev
 ```
 
-The desktop build scans the selected folder without changing it. Moves use collision-safe names, Trash uses the Windows Recycle Bin, and operations are recorded in a local SQLite database.
+The desktop build scans the selected folder without changing it. Moves use collision-safe names, Trash is staged in Sift for review, and operations are recorded in a local SQLite database.
 
 ## Sifting files
 
 The default shortcuts form a four-direction layout:
 
 - Up keeps the file in the watched folder.
-- Down moves it to the Recycle Bin.
+- Down stages it in Trash for review.
 - Left undoes the previous action and returns to that file.
 - Right files it away, using a suggestion, a quick-destination menu, or the Windows folder picker.
 
 Keep, Trash, and File Away advance immediately. Held keys are ignored, shortcuts can be rebound in Settings, and pinned destinations remain visible with number-key shortcuts. Sift follows the Windows light or dark theme by default.
 
-The Windows app previews supported images, PDFs, videos, audio, and text locally. Preview access is restricted to the selected watched folder and text previews are limited to 64 KB.
+The Windows app previews supported images, PDFs, videos, audio, text, and rendered Markdown locally. Preview access is restricted to the selected watched folder and text previews are limited to 256 KB. The preview toolbar can either reveal a file in Explorer or open it in its default Windows app.
 
 ## Safety model
 
 - Scans skip hidden files, directories, symbolic links, and incomplete downloads.
 - Rule runs require a file-by-file preview and explicit confirmation.
 - A move never overwrites an existing file.
-- Trash is never permanent. Restore trashed items through the Windows Recycle Bin.
+- Trash first moves files into Sift's private staging folder. Leaving Sift or returning to Overview opens a review list where files can be restored individually or in a selection, or sent on to the Windows Recycle Bin.
+- Once a file is in the Windows Recycle Bin, programmatic restoration is best-effort: it cannot succeed if the bin was emptied, its metadata is unavailable, or the original path is occupied. History opens the Recycle Bin as the reliable manual fallback.
 - Moves are recorded and can be reversed while the original path remains free.

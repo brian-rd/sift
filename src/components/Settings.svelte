@@ -23,7 +23,7 @@
 
   const shortcutRows: { action: ShortcutAction; name: string; description: string }[] = [
     { action: 'keep', name: 'Keep here', description: 'Leave the file in Downloads' },
-    { action: 'trash', name: 'Trash', description: 'Move the file to Recycle Bin' },
+    { action: 'trash', name: 'Trash', description: 'Stage the file for Trash review' },
     { action: 'undo', name: 'Undo', description: 'Reverse the previous action' },
     { action: 'fileAway', name: 'File Away', description: 'Move to a destination' }
   ];
