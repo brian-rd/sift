@@ -5,6 +5,7 @@
     Keyboard,
     MonitorCog,
     Pin,
+    Play,
     Plus,
     RotateCcw,
     ShieldCheck,
@@ -19,6 +20,7 @@
   export let watchedFolder: string;
   export let watchEnabled: boolean;
   export let trashImmediately: boolean;
+  export let autoplayMedia: boolean;
   export let theme: ThemePreference;
   export let shortcuts: ShortcutBindings;
   export let pinnedDestinations: PinnedDestination[];
@@ -26,6 +28,7 @@
   export let onPickFolder: () => void;
   export let onWatchEnabledChange: (enabled: boolean) => void;
   export let onTrashImmediatelyChange: (enabled: boolean) => void;
+  export let onAutoplayMediaChange: (enabled: boolean) => void;
   export let onThemeChange: (theme: ThemePreference) => void;
   export let onShortcutsChange: (shortcuts: ShortcutBindings) => void;
   export let onAddPinned: () => void;
@@ -85,8 +88,8 @@
 <div class="settings-layout">
   <nav aria-label="Settings sections">
     <a href="#folders">Folders</a><a href="#trash">Trash</a><a href="#appearance">Appearance</a><a
-      href="#shortcuts">Shortcuts</a
-    ><a href="#storage">Storage & privacy</a>
+      href="#media">Media</a
+    ><a href="#shortcuts">Shortcuts</a><a href="#storage">Storage & privacy</a>
   </nav>
   <div class="settings-content">
     <section id="folders">
@@ -191,6 +194,31 @@
             aria-pressed={theme === option[0]}>{option[1]}</button
           >
         {/each}
+      </div>
+    </section>
+
+    <section id="media">
+      <header>
+        <span><Play size={18} /></span>
+        <div>
+          <h2>Media previews</h2>
+          <p>Choose whether audio and video start on their own.</p>
+        </div>
+      </header>
+      <div class="setting-row media-playback">
+        <div>
+          <strong>Autoplay audio and video</strong><span
+            >Start playback when a media file becomes the current item.</span
+          >
+        </div>
+        <button
+          class="switch"
+          class:on={autoplayMedia}
+          on:click={() => onAutoplayMediaChange(!autoplayMedia)}
+          role="switch"
+          aria-label="Autoplay audio and video previews"
+          aria-checked={autoplayMedia}><span></span></button
+        >
       </div>
     </section>
 
@@ -408,6 +436,11 @@
     transform: translateX(16px);
   }
   .direct-trash {
+    border-top: 0;
+    margin-top: 0;
+    padding-top: 0;
+  }
+  .media-playback {
     border-top: 0;
     margin-top: 0;
     padding-top: 0;

@@ -17,6 +17,7 @@
     Rule,
     Screen,
     ShortcutBindings,
+    SiftQueuePreferences,
     ThemePreference,
     TrashItem,
   } from './lib/types';
@@ -40,6 +41,7 @@
   import { DEFAULT_SHORTCUTS } from './lib/shortcuts';
   import { personalisedGreeting } from './lib/greeting';
   import { readStoredJson, writeStoredJson } from './lib/storage';
+  import { DEFAULT_QUEUE_PREFERENCES, isSiftQueuePreferences } from './lib/fileQueue';
 
   const demoDestinations: PinnedDestination[] = [
     { name: 'Documents', path: 'Documents' },
@@ -57,6 +59,11 @@
   let theme: ThemePreference = 'system';
   let watchEnabled = true;
   let trashImmediately = false;
+  let autoplayMedia = false;
+  let queuePreferences: SiftQueuePreferences = {
+    ...DEFAULT_QUEUE_PREFERENCES,
+    includedKinds: [...DEFAULT_QUEUE_PREFERENCES.includedKinds],
+  };
   let rememberedDestinations: Record<string, PinnedDestination> = {};
   let watchedFolder = isTauri ? '' : 'C:\\Users\\you\\Downloads';
   let scanning = false;
@@ -140,6 +147,16 @@
   function updateTrashImmediately(enabled: boolean) {
     trashImmediately = enabled;
     localStorage.setItem('sift:trash-immediately', String(enabled));
+  }
+
+  function updateAutoplayMedia(enabled: boolean) {
+    autoplayMedia = enabled;
+    localStorage.setItem('sift:autoplay-media', String(enabled));
+  }
+
+  function updateQueuePreferences(next: SiftQueuePreferences) {
+    queuePreferences = next;
+    writeStoredJson('sift:queue-preferences', next);
   }
 
   function updatePinnedDestinations(next: PinnedDestination[]) {
@@ -618,6 +635,8 @@
     theme = storedTheme === 'light' || storedTheme === 'dark' ? storedTheme : 'system';
     watchEnabled = localStorage.getItem('sift:watch-enabled') !== 'false';
     trashImmediately = localStorage.getItem('sift:trash-immediately') === 'true';
+    autoplayMedia = localStorage.getItem('sift:autoplay-media') === 'true';
+    queuePreferences = readStoredJson('sift:queue-preferences', queuePreferences, isSiftQueuePreferences);
     applyTheme(theme);
     rememberedDestinations = readStoredJson(
       'sift:remembered-destinations',
@@ -709,6 +728,8 @@
         {pinnedDestinations}
         {shortcuts}
         {trashImmediately}
+        {autoplayMedia}
+        {queuePreferences}
         trashCount={trashItems.length}
         {getSuggestions}
         onAction={siftAction}
@@ -719,6 +740,8 @@
         onUndo={undoLatest}
         onViewTrash={() => reviewTrash('review')}
         onLoadText={loadTextPreview}
+        onQueuePreferencesChange={updateQueuePreferences}
+        onAddPinned={addPinnedDestination}
       />
     {:else if active === 'rules'}
       <main class="page"><Rules {rules} {files} onUpdate={updateRules} onRun={runRules} /></main>
@@ -737,6 +760,7 @@
           {watchedFolder}
           {watchEnabled}
           {trashImmediately}
+          {autoplayMedia}
           {theme}
           {shortcuts}
           {pinnedDestinations}
@@ -744,6 +768,7 @@
           onPickFolder={pickWatchedFolder}
           onWatchEnabledChange={updateWatchEnabled}
           onTrashImmediatelyChange={updateTrashImmediately}
+          onAutoplayMediaChange={updateAutoplayMedia}
           onThemeChange={updateTheme}
           onShortcutsChange={updateShortcuts}
           onAddPinned={addPinnedDestination}

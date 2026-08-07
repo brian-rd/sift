@@ -10,21 +10,27 @@
     FolderInput,
     FolderOpen,
     Keyboard,
+    ListFilter,
+    Plus,
     RotateCcw,
     Trash2,
     X,
   } from '@lucide/svelte';
-  import type { DownloadFile, PinnedDestination, ShortcutBindings } from '../lib/types';
+  import type { DownloadFile, PinnedDestination, ShortcutBindings, SiftQueuePreferences } from '../lib/types';
   import { formatBytes, formatDate } from '../lib/format';
   import { shortcutLabel } from '../lib/shortcuts';
+  import { prepareSiftQueue } from '../lib/fileQueue';
   import FileIcon from './FileIcon.svelte';
   import MarkdownPreview from './MarkdownPreview.svelte';
+  import SiftQueueDialog from './SiftQueueDialog.svelte';
   import Tooltip from './Tooltip.svelte';
 
   export let files: DownloadFile[];
   export let pinnedDestinations: PinnedDestination[];
   export let shortcuts: ShortcutBindings;
   export let trashImmediately: boolean;
+  export let autoplayMedia: boolean;
+  export let queuePreferences: SiftQueuePreferences;
   export let trashCount: number;
   export let getSuggestions: (file: DownloadFile) => PinnedDestination[];
   export let onAction: (
@@ -39,14 +45,15 @@
   export let onUndo: () => Promise<DownloadFile | null>;
   export let onViewTrash: () => void;
   export let onLoadText: (file: DownloadFile) => Promise<string>;
+  export let onQueuePreferencesChange: (preferences: SiftQueuePreferences) => void;
+  export let onAddPinned: () => void;
 
   let processed = 0;
-  let total = files.length;
   let announcement = '';
   let restoredNotice = '';
-  let completed = false;
   let busy = false;
   let showDestinations = false;
+  let showQueue = false;
   let destinationOptions: PinnedDestination[] = [];
   let noticeTimer: ReturnType<typeof setTimeout>;
   let previewPath = '';
@@ -54,15 +61,27 @@
   let textPreviewError = '';
   let pressedAction: 'keep' | 'trash' | 'undo' | 'fileAway' | null = null;
   let pressTimer: ReturnType<typeof setTimeout>;
+  let queueFiles = prepareSiftQueue(files, queuePreferences);
+  let appliedQueueKey = queueKey(queuePreferences);
 
-  $: current = files[0];
-  $: progress = total ? Math.round((processed / total) * 100) : 100;
+  $: queueFiles = prepareSiftQueue(files, queuePreferences);
+  $: if (queueKey(queuePreferences) !== appliedQueueKey) {
+    appliedQueueKey = queueKey(queuePreferences);
+    processed = 0;
+  }
+  $: current = queueFiles[0];
+  $: total = processed + queueFiles.length;
+  $: progress = total ? Math.round((processed / total) * 100) : 0;
   $: currentSuggestions = current ? getSuggestions(current) : [];
   $: if (current?.kind === 'text' && current.path !== previewPath) void loadText(current);
   $: if (current?.kind !== 'text' && previewPath) {
     previewPath = '';
     textPreview = '';
     textPreviewError = '';
+  }
+
+  function queueKey(preferences: SiftQueuePreferences) {
+    return `${preferences.sortBy}:${preferences.direction}:${preferences.includedKinds.join(',')}`;
   }
 
   async function loadText(file: DownloadFile) {
@@ -95,7 +114,6 @@
           : `Filed in ${destination?.name}`;
     announcement = `${file.name}: ${label}`;
     showDestinations = false;
-    if (processed >= total) completed = true;
   }
 
   async function fileAway() {
@@ -118,7 +136,6 @@
     busy = false;
     if (!restored) return;
     processed = Math.max(0, processed - 1);
-    completed = false;
     restoredNotice = `Restored ${restored.name}`;
     announcement = restoredNotice;
     clearTimeout(noticeTimer);
@@ -132,7 +149,13 @@
   }
 
   function handleKey(event: KeyboardEvent) {
-    if (event.repeat || busy || showDestinations) return;
+    if (event.code === 'Escape' && (showDestinations || showQueue)) {
+      event.preventDefault();
+      showDestinations = false;
+      showQueue = false;
+      return;
+    }
+    if (event.repeat || busy || showDestinations || showQueue) return;
     if (
       event.target instanceof HTMLInputElement ||
       event.target instanceof HTMLTextAreaElement ||
@@ -203,12 +226,17 @@
         <span style={`width:${progress}%`}></span>
       </div>
     </div>
-    {#if !trashImmediately}<button class="undo-top trash-top" on:click={onViewTrash}
-        ><Trash2 size={15} /> View Trash {#if trashCount > 0}<span>{trashCount}</span>{/if}<kbd
-          class="sr-only"
-          aria-hidden="true">{shortcutLabel(shortcuts.undo)}</kbd
-        ></button
-      >{/if}
+    <div class="header-actions">
+      <button class="queue-button" on:click={() => (showQueue = true)} aria-haspopup="dialog"
+        ><ListFilter size={15} /> Queue <span>{queueFiles.length}</span></button
+      >
+      {#if !trashImmediately}<button class="undo-top trash-top" on:click={onViewTrash}
+          ><Trash2 size={15} /> View Trash {#if trashCount > 0}<span>{trashCount}</span>{/if}<kbd
+            class="sr-only"
+            aria-hidden="true">{shortcutLabel(shortcuts.undo)}</kbd
+          ></button
+        >{/if}
+    </div>
   </header>
 
   {#if restoredNotice}<div class="restore-toast" role="status">
@@ -216,13 +244,21 @@
       {restoredNotice}
     </div>{/if}
 
-  {#if completed || !current}
+  {#if !current}
     <section class="complete-card">
-      <span class="complete-icon"><Check size={34} /></span>
-      <p class="eyebrow">Sift complete</p>
-      <h1>Downloads cleared.</h1>
-      <p>Review Trash before returning to your overview.</p>
-      <button class="primary" on:click={onBack}>Back to overview</button>
+      {#if files.length > 0}
+        <span class="complete-icon filtered"><ListFilter size={32} /></span>
+        <p class="eyebrow">Queue complete</p>
+        <h1>No matching files remain.</h1>
+        <p>{files.length} {files.length === 1 ? 'file is' : 'files are'} outside your current filter.</p>
+        <button class="primary" on:click={() => (showQueue = true)}>Change queue filters</button>
+      {:else}
+        <span class="complete-icon"><Check size={34} /></span>
+        <p class="eyebrow">Sift complete</p>
+        <h1>Downloads cleared.</h1>
+        <p>Review Trash before returning to your overview.</p>
+        <button class="primary" on:click={onBack}>Back to overview</button>
+      {/if}
     </section>
   {:else}
     <main class="sift-main">
@@ -249,13 +285,14 @@
             <iframe src={current.previewUrl} title={`Preview of ${current.name}`}></iframe>
           {:else if current.kind === 'video' && current.previewUrl}
             <!-- svelte-ignore a11y_media_has_caption -->
-            <video src={current.previewUrl} controls preload="metadata"></video>
+            <video src={current.previewUrl} controls preload="metadata" autoplay={autoplayMedia}></video>
           {:else if current.kind === 'audio' && current.previewUrl}
             <div class="audio-preview">
               <FileIcon kind={current.kind} extension={current.extension} size={54} /><audio
                 src={current.previewUrl}
                 controls
                 preload="metadata"
+                autoplay={autoplayMedia}
               ></audio>
             </div>
           {:else if current.kind === 'text'}
@@ -328,9 +365,22 @@
           <span>Pinned destinations</span>
           <div>
             {#each pinnedDestinations as destination, index}<button
+                class="pinned-destination"
                 on:click={() => commit('fileAway', destination)}
                 disabled={busy}><kbd>{index + 1}</kbd>{destination.name}</button
               >{/each}
+            <Tooltip
+              text={pinnedDestinations.length >= 9
+                ? 'You can pin up to nine destinations'
+                : 'Pin another destination'}
+              placement="top"
+              ><button
+                class="add-pinned"
+                on:click={onAddPinned}
+                disabled={pinnedDestinations.length >= 9}
+                aria-label="Add a pinned destination"><Plus size={13} /> Add destination</button
+              ></Tooltip
+            >
           </div>
         </div>
         <div class="keyboard-hint">
@@ -421,6 +471,15 @@
       </div>
     </div>
   {/if}
+  {#if showQueue}
+    <SiftQueueDialog
+      {files}
+      matchingCount={queueFiles.length}
+      preferences={queuePreferences}
+      onChange={onQueuePreferencesChange}
+      onClose={() => (showQueue = false)}
+    />
+  {/if}
   <div class="sr-only" aria-live="polite">{announcement}</div>
 </div>
 
@@ -441,7 +500,8 @@
     background: var(--bg);
   }
   .back,
-  .undo-top {
+  .undo-top,
+  .queue-button {
     display: flex;
     align-items: center;
     gap: 7px;
@@ -453,6 +513,35 @@
   }
   .undo-top {
     justify-self: end;
+  }
+  .header-actions {
+    justify-self: end;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .queue-button {
+    height: 32px;
+    padding: 0 9px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+  }
+  .queue-button:hover {
+    border-color: var(--border-strong);
+    color: var(--ink);
+  }
+  .queue-button span,
+  .trash-top > span {
+    min-width: 18px;
+    height: 18px;
+    display: grid;
+    place-items: center;
+    padding: 0 5px;
+    border-radius: 5px;
+    background: var(--surface-3);
+    color: var(--text-2);
+    font-size: 8px;
   }
   .undo-top:disabled {
     opacity: 0.45;
@@ -700,9 +789,40 @@
     font: 600 9px var(--font-ui);
     cursor: pointer;
   }
-  .pinned button:hover {
+  .pinned .pinned-destination {
+    border-color: var(--primary-action-bg);
+    background: var(--primary-action-bg);
+    color: var(--primary-action-text);
+  }
+  .pinned .pinned-destination:hover {
+    border-color: var(--primary-action-hover);
+    background: var(--primary-action-hover);
+    color: var(--primary-action-text);
+  }
+  .pinned .pinned-destination:active {
+    border-color: var(--primary-action-pressed);
+    background: var(--primary-action-pressed);
+  }
+  .pinned .pinned-destination kbd {
+    min-width: 17px;
+    height: 17px;
+    display: grid;
+    place-items: center;
+    border-radius: 4px;
+    background: var(--primary-action-key-bg);
+    color: var(--primary-action-text);
+  }
+  .pinned .add-pinned {
+    border-style: dashed;
+    background: transparent;
+  }
+  .pinned .add-pinned:hover {
     border-color: var(--border-strong);
     color: var(--ink);
+  }
+  .pinned .add-pinned:disabled {
+    opacity: 0.46;
+    cursor: not-allowed;
   }
   .pinned kbd {
     font-size: 8px;
@@ -822,6 +942,10 @@
     background: var(--success-bg);
     color: var(--success-text);
     margin: 0 auto 24px;
+  }
+  .complete-icon.filtered {
+    background: var(--surface-2);
+    color: var(--text-2);
   }
   .complete-card > p:not(.eyebrow) {
     color: var(--text-2);
@@ -970,6 +1094,15 @@
     .progress-copy span,
     .undo-top kbd {
       display: none;
+    }
+    .queue-button,
+    .undo-top {
+      font-size: 0;
+      gap: 4px;
+    }
+    .queue-button span,
+    .trash-top > span {
+      font-size: 8px;
     }
     .sift-main {
       padding: 18px 14px;

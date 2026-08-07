@@ -65,21 +65,6 @@ Rules can match extensions, file names, glob patterns, regular expressions, file
 
 Sift uses the Windows WebView2 runtime already available on supported Windows installations rather than shipping a browser engine. The native backend handles scanning and file operations; Svelte renders the interface.
 
-Measured from the optimized `1.0.0-beta.1` x64 release build:
-
-| Artifact                   |      Size |
-| -------------------------- | --------: |
-| Installed `sift.exe`       |  3.93 MiB |
-| NSIS installer             |  1.61 MiB |
-| Frontend JavaScript (gzip) | 54.82 KiB |
-| Frontend CSS (gzip)        | 10.61 KiB |
-
-The release profile uses link-time optimization, one codegen unit, size-oriented optimization, panic aborts, symbol stripping, and Tauri's unused-command removal. These changes reduced the app executable from 10.56 MiB to 3.93 MiB without removing product features.
-
-## Privacy
-
-Sift has no account, telemetry, cloud storage, or upload path. Preferences and rules stay in local browser storage; operation history and staged-trash metadata stay in a local SQLite database. The configured content security policy limits the desktop webview to the resources needed by the app.
-
 ## Development
 
 ### Requirements
@@ -122,19 +107,3 @@ pnpm tauri build
 ```
 
 The NSIS installer is written to `src-tauri/target/release/bundle/nsis/`.
-
-## Project structure
-
-```text
-src/
-  components/       Svelte screens and reusable UI
-  lib/              Backend bridge, rules, shortcuts, storage, and tests
-  App.svelte        Application state and workflow coordination
-src-tauri/
-  src/lib.rs        Windows file operations, Trash, History, and Tauri commands
-  capabilities/     Minimal desktop permissions
-  tauri.conf.json   Window, security, and installer configuration
-docs/media/         README screenshots and demo video
-```
-
-Sift is intentionally Windows-only. Its Recycle Bin restoration, File Explorer integration, user display name, and installer are built around native Windows behavior.
