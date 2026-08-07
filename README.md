@@ -32,6 +32,8 @@ The default shortcuts form a four-direction layout:
 
 Keep, Trash, and File Away advance immediately. Held keys are ignored, shortcuts can be rebound in Settings, and pinned destinations remain visible with number-key shortcuts. Sift follows the Windows light or dark theme by default.
 
+Sift watches for completed files by default and adds new arrivals to the queue without bringing back files already processed in the current session. Automatic watching can be paused in Settings.
+
 The Windows app previews supported images, PDFs, videos, audio, text, and rendered Markdown locally. Preview access is restricted to the selected watched folder and text previews are limited to 256 KB. The preview toolbar can either reveal a file in Explorer or open it in its default Windows app.
 
 ## Safety model
@@ -40,5 +42,6 @@ The Windows app previews supported images, PDFs, videos, audio, text, and render
 - Rule runs require a file-by-file preview and explicit confirmation.
 - A move never overwrites an existing file.
 - Trash first moves files into Sift's private staging folder. Leaving Sift or returning to Overview opens a review list where files can be restored individually or in a selection, or sent on to the Windows Recycle Bin.
+- Settings can optionally bypass Sift Trash and send files directly to the Windows Recycle Bin. Directly recycled files are not undoable inside Sift.
 - Once a file is sent to the Windows Recycle Bin, Sift no longer offers Undo for it. History opens the Recycle Bin so Windows can handle any final restoration manually.
 - Moves are recorded and can be reversed while the original path remains free.

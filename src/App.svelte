@@ -31,6 +31,8 @@
   let pinnedDestinations: PinnedDestination[] = isTauri ? [] : demoDestinations;
   let shortcuts: ShortcutBindings = { ...DEFAULT_SHORTCUTS };
   let theme: ThemePreference = 'system';
+  let watchEnabled = true;
+  let trashImmediately = false;
   let rememberedDestinations: Record<string, PinnedDestination> = {};
   let watchedFolder = isTauri ? '' : 'C:\\Users\\you\\Downloads';
   let scanning = false;
@@ -43,6 +45,7 @@
   let allowWindowClose = false;
   let userName = '';
   let currentHour = new Date().getHours();
+  let knownFilePaths = new Set<string>();
 
   $: greeting = personalisedGreeting(currentHour, userName);
 
@@ -69,6 +72,17 @@
     localStorage.setItem('sift:shortcuts', JSON.stringify(next));
   }
 
+  function updateWatchEnabled(enabled: boolean) {
+    watchEnabled = enabled;
+    localStorage.setItem('sift:watch-enabled', String(enabled));
+    notify(enabled ? 'Watching for new files' : 'Automatic file watching paused');
+  }
+
+  function updateTrashImmediately(enabled: boolean) {
+    trashImmediately = enabled;
+    localStorage.setItem('sift:trash-immediately', String(enabled));
+  }
+
   function updatePinnedDestinations(next: PinnedDestination[]) {
     pinnedDestinations = next.slice(0, 9);
     localStorage.setItem('sift:pinned-destinations', JSON.stringify(pinnedDestinations));
@@ -90,32 +104,66 @@
     localStorage.setItem('sift:remembered-destinations', JSON.stringify(rememberedDestinations));
   }
 
-  async function scan() {
+  async function scan(options: { silent?: boolean } = {}) {
+    if (scanning) return;
     scanning = true;
     if (!isTauri) {
-      setTimeout(() => { scanning = false; notify(`Scan complete — ${files.length} files found`); }, 700);
+      setTimeout(() => { scanning = false; if (!options.silent) notify(`Scan complete — ${files.length} files found`); }, 700);
       return;
     }
     try {
       const result = await scanDownloads(watchedFolder);
-      files = result.files.map((file) => ['image', 'pdf', 'video', 'audio'].includes(file.kind) ? { ...file, previewUrl: convertFileSrc(file.path) } : file);
+      const scannedFiles = result.files.map((file) => ['image', 'pdf', 'video', 'audio'].includes(file.kind) ? { ...file, previewUrl: convertFileSrc(file.path) } : file);
+      const scannedPaths = new Set(scannedFiles.map((file) => file.path));
+      const newFiles = scannedFiles.filter((file) => !knownFilePaths.has(file.path));
+      files = options.silent
+        ? scannedFiles.filter((file) => files.some((existing) => existing.path === file.path) || newFiles.some((newFile) => newFile.path === file.path))
+        : scannedFiles;
+      knownFilePaths = scannedPaths;
       watchedFolder = result.folder;
-      notify(`Scan complete — ${result.files.length} files found${result.skippedIncomplete ? `, ${result.skippedIncomplete} still downloading` : ''}`);
+      if (options.silent) {
+        if (newFiles.length) notify(`${newFiles.length} new ${newFiles.length === 1 ? 'file is' : 'files are'} ready to Sift`);
+      } else {
+        notify(`Scan complete — ${result.files.length} files found${result.skippedIncomplete ? `, ${result.skippedIncomplete} still downloading` : ''}`);
+      }
     } catch (error) { notify(`Could not scan folder: ${error}`); }
     finally { scanning = false; }
   }
 
-  function record(file: DownloadFile, action: HistoryItem['action'], destination?: string, backendOperationId?: number, trashState?: HistoryItem['trashState']) {
-    history = [{ id: crypto.randomUUID(), fileName: file.name, action, destination, timestamp: Date.now(), session: 'Just now', undoable: true, backendOperationId, file, trashState }, ...history];
+  function record(file: DownloadFile, action: HistoryItem['action'], destination?: string, backendOperationId?: number, trashState?: HistoryItem['trashState'], undoable = true) {
+    history = [{ id: crypto.randomUUID(), fileName: file.name, action, destination, timestamp: Date.now(), session: 'Just now', undoable, backendOperationId, file, trashState }, ...history];
+  }
+
+  function addToTrash(file: DownloadFile, operationId: number, stagedPath: string) {
+    trashItems = [{ operationId, originalPath: file.path, stagedPath, name: file.name, extension: file.extension, size: file.size, modifiedAt: file.modifiedAt, createdAt: file.createdAt, kind: file.kind }, ...trashItems];
+  }
+
+  async function processTrash(file: DownloadFile): Promise<{ operationId: number; trashState: NonNullable<HistoryItem['trashState']>; undoable: boolean }> {
+    const result = isTauri ? await trashDownload(file.path) : { operationId: Date.now(), source: file.path, destination: file.path };
+    if (trashImmediately) {
+      try {
+        if (isTauri) await finalizeTrash(result.operationId);
+        return { operationId: result.operationId, trashState: 'recycled', undoable: false };
+      } catch (error) {
+        addToTrash(file, result.operationId, result.destination ?? file.path);
+        notify(`Recycle Bin unavailable; ${file.name} is safe in Sift Trash for review`);
+        return { operationId: result.operationId, trashState: 'staged', undoable: true };
+      }
+    }
+    addToTrash(file, result.operationId, result.destination ?? file.path);
+    return { operationId: result.operationId, trashState: 'staged', undoable: true };
   }
 
   async function siftAction(file: DownloadFile, action: 'trash' | 'keep' | 'fileAway', destination?: PinnedDestination): Promise<boolean> {
     try {
       let operationId: number | undefined;
+      let trashState: HistoryItem['trashState'];
+      let undoable = true;
       if (action === 'trash') {
-        const result = isTauri ? await trashDownload(file.path) : { operationId: Date.now(), source: file.path, destination: file.path };
+        const result = await processTrash(file);
         operationId = result.operationId;
-        trashItems = [{ operationId, originalPath: file.path, stagedPath: result.destination ?? file.path, name: file.name, extension: file.extension, size: file.size, modifiedAt: file.modifiedAt, createdAt: file.createdAt, kind: file.kind }, ...trashItems];
+        trashState = result.trashState;
+        undoable = result.undoable;
       }
       if (action === 'fileAway') {
         if (!destination) return false;
@@ -123,7 +171,7 @@
         rememberDestination(file, destination);
       }
       const historyAction: HistoryItem['action'] = action === 'trash' ? 'Trashed' : action === 'keep' ? 'Kept' : 'Moved';
-      record(file, historyAction, action === 'fileAway' ? destination?.path : undefined, operationId, action === 'trash' ? 'staged' : undefined);
+      record(file, historyAction, action === 'fileAway' ? destination?.path : undefined, operationId, trashState, undoable);
       files = files.filter((item) => item.path !== file.path);
       return true;
     } catch (error) {
@@ -133,9 +181,13 @@
   }
 
   async function undoLatest(): Promise<DownloadFile | null> {
-    const item = history.find((entry) => entry.undoable);
+    const item = history[0];
     if (!item && trashItems.length) return (await restoreTrash([trashItems[0].operationId]))[0] ?? null;
     if (!item) { notify('Nothing to undo'); return null; }
+    if (!item.undoable) {
+      notify(item.action === 'Trashed' ? 'Restore this file from the Windows Recycle Bin' : 'The previous action cannot be undone');
+      return null;
+    }
     return undoItem(item.id);
   }
 
@@ -181,14 +233,17 @@
     for (const { file, rule } of matches) {
       try {
         let operationId: number | undefined;
+        let trashState: HistoryItem['trashState'];
+        let undoable = true;
         if (isTauri && rule.actionType === 'move' && rule.destination) operationId = (await moveDownload(file.path, rule.destination)).operationId;
         if (rule.actionType === 'trash') {
-          const result = isTauri ? await trashDownload(file.path) : { operationId: Date.now(), source: file.path, destination: file.path };
+          const result = await processTrash(file);
           operationId = result.operationId;
-          trashItems = [{ operationId, originalPath: file.path, stagedPath: result.destination ?? file.path, name: file.name, extension: file.extension, size: file.size, modifiedAt: file.modifiedAt, createdAt: file.createdAt, kind: file.kind }, ...trashItems];
+          trashState = result.trashState;
+          undoable = result.undoable;
         }
         const action: HistoryItem['action'] = rule.actionType === 'trash' ? 'Trashed' : rule.actionType === 'review' ? 'Review later' : rule.actionType === 'rename' ? 'Renamed' : rule.actionType === 'ignore' ? 'Kept' : 'Moved';
-        record(file, action, rule.actionType === 'move' ? rule.destination : undefined, operationId, rule.actionType === 'trash' ? 'staged' : undefined);
+        record(file, action, rule.actionType === 'move' ? rule.destination : undefined, operationId, trashState, undoable);
         completed.push(file.path);
       } catch (error) { notify(`Stopped at ${file.name}: ${error}`); break; }
     }
@@ -313,6 +368,9 @@
     const colourQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handleSystemTheme = () => { if (theme === 'system') applyTheme('system'); };
     const greetingTimer = setInterval(() => currentHour = new Date().getHours(), 60_000);
+    const watchTimer = setInterval(() => {
+      if (isTauri && watchEnabled && !scanning) void scan({ silent: true });
+    }, 3_000);
     let removeCloseListener: (() => void) | undefined;
     colourQuery.addEventListener('change', handleSystemTheme);
 
@@ -326,6 +384,8 @@
 
     const storedTheme = localStorage.getItem('sift:theme');
     theme = storedTheme === 'light' || storedTheme === 'dark' ? storedTheme : 'system';
+    watchEnabled = localStorage.getItem('sift:watch-enabled') !== 'false';
+    trashImmediately = localStorage.getItem('sift:trash-immediately') === 'true';
     applyTheme(theme);
     try { rememberedDestinations = JSON.parse(localStorage.getItem('sift:remembered-destinations') ?? '{}'); } catch { rememberedDestinations = {}; }
     try {
@@ -353,24 +413,25 @@
     return () => {
       colourQuery.removeEventListener('change', handleSystemTheme);
       clearInterval(greetingTimer);
+      clearInterval(watchTimer);
       removeCloseListener?.();
     };
   });
 </script>
 
 <div class="app-shell">
-  {#if active !== 'sift'}<Sidebar {active} onNavigate={(screen) => active = screen} onWatchedFolder={() => active = 'settings'} reviewCount={files.length} />{/if}
+  {#if active !== 'sift'}<Sidebar {active} {watchEnabled} onNavigate={(screen) => active = screen} onWatchedFolder={() => active = 'settings'} reviewCount={files.length} />{/if}
   <div class:sift-view={active === 'sift'} class="content-shell">
     {#if active === 'dashboard'}
-      <main class="page"><Dashboard {files} {scanning} isDemo={!isTauri} {greeting} onScan={scan} onSift={() => active = 'sift'} onRules={() => active = 'rules'} onPreviewRules={() => active = 'rules'} /></main>
+      <main class="page"><Dashboard {files} {scanning} isDemo={!isTauri} {greeting} onScan={() => scan()} onSift={() => active = 'sift'} onRules={() => active = 'rules'} onPreviewRules={() => active = 'rules'} /></main>
     {:else if active === 'sift'}
-      <SiftMode {files} {pinnedDestinations} {shortcuts} trashCount={trashItems.length} {getSuggestions} onAction={siftAction} onPickDestination={pickDestination} onBack={requestOverview} onOpen={openFile} onReveal={revealFile} onUndo={undoLatest} onViewTrash={() => reviewTrash('review')} onLoadText={loadTextPreview} />
+      <SiftMode {files} {pinnedDestinations} {shortcuts} {trashImmediately} trashCount={trashItems.length} {getSuggestions} onAction={siftAction} onPickDestination={pickDestination} onBack={requestOverview} onOpen={openFile} onReveal={revealFile} onUndo={undoLatest} onViewTrash={() => reviewTrash('review')} onLoadText={loadTextPreview} />
     {:else if active === 'rules'}
       <main class="page"><Rules {rules} {files} onUpdate={(next) => rules = next} onRun={runRules} /></main>
     {:else if active === 'history'}
       <main class="page"><History items={history} onUndo={undoItem} onUndoSession={undoSession} onOpenRecycleBin={showRecycleBin} /></main>
     {:else if active === 'settings'}
-      <main class="page"><Settings {watchedFolder} {theme} {shortcuts} {pinnedDestinations} onFolderChange={(folder) => watchedFolder = folder} onPickFolder={pickWatchedFolder} onThemeChange={updateTheme} onShortcutsChange={updateShortcuts} onAddPinned={addPinnedDestination} onRemovePinned={removePinnedDestination} /></main>
+      <main class="page"><Settings {watchedFolder} {watchEnabled} {trashImmediately} {theme} {shortcuts} {pinnedDestinations} onFolderChange={(folder) => watchedFolder = folder} onPickFolder={pickWatchedFolder} onWatchEnabledChange={updateWatchEnabled} onTrashImmediatelyChange={updateTrashImmediately} onThemeChange={updateTheme} onShortcutsChange={updateShortcuts} onAddPinned={addPinnedDestination} onRemovePinned={removePinnedDestination} /></main>
     {/if}
   </div>
 </div>

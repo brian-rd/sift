@@ -9,6 +9,7 @@
   export let files: DownloadFile[];
   export let pinnedDestinations: PinnedDestination[];
   export let shortcuts: ShortcutBindings;
+  export let trashImmediately: boolean;
   export let trashCount: number;
   export let getSuggestions: (file: DownloadFile) => PinnedDestination[];
   export let onAction: (file: DownloadFile, action: 'trash' | 'keep' | 'fileAway', destination?: PinnedDestination) => Promise<boolean>;
@@ -65,7 +66,7 @@
     busy = false;
     if (!succeeded) return;
     processed += 1;
-    const label = action === 'trash' ? 'Moved to Sift Trash' : action === 'keep' ? 'Kept in Downloads' : `Filed in ${destination?.name}`;
+    const label = action === 'trash' ? (trashImmediately ? 'Moved to Windows Recycle Bin' : 'Moved to Sift Trash') : action === 'keep' ? 'Kept in Downloads' : `Filed in ${destination?.name}`;
     announcement = `${file.name}: ${label}`;
     showDestinations = false;
     if (processed >= total) completed = true;
@@ -200,7 +201,7 @@
 
     <footer class="action-dock" aria-label="Sift actions">
       <button class="action keep" class:pressed={pressedAction === 'keep'} on:click={() => commit('keep')} disabled={busy}><span>{shortcutLabel(shortcuts.keep)}</span><ArrowUp size={18} /><div><strong>Keep here</strong><small>Leave in Downloads</small></div></button>
-      <button class="action trash" class:pressed={pressedAction === 'trash'} on:click={() => commit('trash')} disabled={busy}><span>{shortcutLabel(shortcuts.trash)}</span><Trash2 size={18} /><div><strong>Trash</strong><small>Stage for review</small></div></button>
+      <button class="action trash" class:pressed={pressedAction === 'trash'} on:click={() => commit('trash')} disabled={busy}><span>{shortcutLabel(shortcuts.trash)}</span><Trash2 size={18} /><div><strong>Trash</strong><small>{trashImmediately ? 'Send to Recycle Bin' : 'Stage for review'}</small></div></button>
       <button class="action undo-action" class:pressed={pressedAction === 'undo'} on:click={undo} disabled={busy}><span>{shortcutLabel(shortcuts.undo)}</span><RotateCcw size={18} /><div><strong>Undo</strong><small>Restore the last file</small></div></button>
       <button class="action file-away" class:pressed={pressedAction === 'fileAway'} on:click={fileAway} disabled={busy}><span>{shortcutLabel(shortcuts.fileAway)}</span><FolderInput size={18} /><div><strong>File Away</strong><small>{currentSuggestions.length === 1 ? currentSuggestions[0].name : currentSuggestions.length > 1 ? 'Choose a suggestion' : 'Choose a folder'}</small></div></button>
     </footer>
