@@ -12,6 +12,10 @@
 
 Sift is a lightweight, local-first Windows desktop app for reviewing and organising downloaded files. It combines a focused one-file-at-a-time workflow with optional rules for predictable files. Files never leave your computer, and Sift shows every rule result before applying it.
 
+## Download
+
+Download the Windows x64 installer from the [v1.0.0 Beta 1 release](https://github.com/brian-rd/sift/releases/tag/v1.0.0-beta.1). The beta installer is currently unsigned, so Windows SmartScreen may show an “unknown publisher” warning.
+
 ![Sift overview in dark mode](docs/media/overview.jpg)
 
 ## See it in action
@@ -61,7 +65,7 @@ Rules can match extensions, file names, glob patterns, regular expressions, file
 
 Sift uses the Windows WebView2 runtime already available on supported Windows installations rather than shipping a browser engine. The native backend handles scanning and file operations; Svelte renders the interface.
 
-Measured from the optimized `0.1.0` x64 release build:
+Measured from the optimized `1.0.0-beta.1` x64 release build:
 
 | Artifact                   |      Size |
 | -------------------------- | --------: |
