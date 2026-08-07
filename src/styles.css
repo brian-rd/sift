@@ -22,6 +22,27 @@
   --border-strong: #bbb9b1;
   --accent: #c55c39;
   --accent-hover: #ad4d2f;
+  --accent-contrast: #ffffff;
+  --focus-ring: rgba(197,92,57,.32);
+  --primary-action-bg: #292b26;
+  --primary-action-hover: #363831;
+  --primary-action-text: #ffffff;
+  --primary-action-muted: #d0d0ca;
+  --primary-action-key-bg: rgba(255,255,255,.13);
+  --file-icon-bg: #ececea;
+  --file-icon-color: #575752;
+  --file-image-bg: #e8f1ea;
+  --file-image-color: #3c7450;
+  --file-pdf-bg: #f4e8e4;
+  --file-pdf-color: #a44f3e;
+  --file-archive-bg: #eee8f3;
+  --file-archive-color: #795998;
+  --file-video-bg: #e8edf5;
+  --file-video-color: #506d94;
+  --file-audio-bg: #f1e9dc;
+  --file-audio-color: #9a6b2b;
+  --file-text-bg: #e5efee;
+  --file-text-color: #33746d;
   --green: #5d8667;
   --success-bg: #edf4ee;
   --success-strong: #dfece1;
@@ -54,6 +75,27 @@
   --border-strong: rgba(255,255,255,.23);
   --accent: #90caf9;
   --accent-hover: #bbdefb;
+  --accent-contrast: #102027;
+  --focus-ring: rgba(144,202,249,.42);
+  --primary-action-bg: #1565c0;
+  --primary-action-hover: #1976d2;
+  --primary-action-text: #ffffff;
+  --primary-action-muted: rgba(255,255,255,.90);
+  --primary-action-key-bg: rgba(255,255,255,.16);
+  --file-icon-bg: #2b2b2b;
+  --file-icon-color: #bdbdbd;
+  --file-image-bg: #1b3022;
+  --file-image-color: #81c784;
+  --file-pdf-bg: #321b1a;
+  --file-pdf-color: #ef9a9a;
+  --file-archive-bg: #2d2438;
+  --file-archive-color: #ce93d8;
+  --file-video-bg: #1b2635;
+  --file-video-color: #90caf9;
+  --file-audio-bg: #332918;
+  --file-audio-color: #ffcc80;
+  --file-text-bg: #16302e;
+  --file-text-color: #80cbc4;
   --green: #66bb6a;
   --success-bg: #1b2e1d;
   --success-strong: #244228;
@@ -76,13 +118,19 @@ body { background: var(--bg); color: var(--ink); }
 [data-color-scheme='dark'] :is(nav button.active,.folder-card,.stats article,.panel,.history-toolbar,.history-list,.rules-card,.modal,.preview-list,.settings-content>section,.sheet,.scan-button) { background: var(--surface) !important; color: var(--ink); }
 [data-color-scheme='dark'] :is(nav button:hover,.file-row:hover,.rules-header,.condition code,.modal header button,.modal input,.modal select,.summary-bar,.rule-sentence,.empty,.secondary,.icon-button) { background: var(--surface-2) !important; color: var(--text-2); }
 [data-color-scheme='dark'] :is(.demo-banner,.privacy-note) { background: var(--success-bg) !important; border-color: var(--success-border) !important; color: var(--success-text) !important; }
+[data-color-scheme='dark'] :is(.stat-icon,.action-icon,.empty>span,.summary-icon) { background: var(--surface-3) !important; color: var(--accent) !important; }
+[data-color-scheme='dark'] .stat-icon.success { background: var(--success-bg) !important; color: var(--success-text) !important; }
+[data-color-scheme='dark'] .action-icon.trash { background: var(--danger-bg) !important; color: var(--danger-text) !important; }
+[data-color-scheme='dark'] .stat-icon.amber { background: #332918 !important; color: #ffcc80 !important; }
+[data-color-scheme='dark'] :is(.matched,.needs-review) { background: var(--surface-3) !important; color: var(--text-2) !important; }
+[data-color-scheme='dark'] .hero-card .primary { color: var(--accent-contrast) !important; }
 [data-color-scheme='dark'] :is(input,select) { background: var(--surface) !important; color: var(--ink) !important; }
 .app-shell { display: flex; min-height: 100vh; }
 .content-shell { min-width: 0; flex: 1; }
 .content-shell.sift-view { height: 100vh; }
 .page { width: min(1120px,100%); padding: 34px 40px 60px; margin: 0 auto; }
 button, input, select { font: inherit; }
-button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible { outline: 3px solid rgba(197,92,57,.28); outline-offset: 2px; }
+button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
 .toast { position: fixed; z-index: 200; bottom: 22px; left: 50%; transform: translateX(-50%); padding: 10px 14px; border-radius: 8px; background: var(--ink); color: var(--bg); font-size: 11px; box-shadow: var(--shadow-lg); animation: toast-in .2s ease-out; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%,7px); } }

@@ -9,5 +9,5 @@
 <span class="file-icon {kind}" aria-hidden="true"><svelte:component this={icon} {size} strokeWidth={1.8} /></span>
 
 <style>
-  .file-icon{display:inline-grid;place-items:center;width:40px;height:40px;border-radius:9px;background:#ececea;color:#575752;flex:none}.image{background:#e8f1ea;color:#3c7450}.pdf{background:#f4e8e4;color:#a44f3e}.archive{background:#eee8f3;color:#795998}.video{background:#e8edf5;color:#506d94}.audio{background:#f1e9dc;color:#9a6b2b}.text{background:#e5efee;color:#33746d}
+  .file-icon{display:inline-grid;place-items:center;width:40px;height:40px;border-radius:9px;background:var(--file-icon-bg);color:var(--file-icon-color);flex:none}.image{background:var(--file-image-bg);color:var(--file-image-color)}.pdf{background:var(--file-pdf-bg);color:var(--file-pdf-color)}.archive{background:var(--file-archive-bg);color:var(--file-archive-color)}.video{background:var(--file-video-bg);color:var(--file-video-color)}.audio{background:var(--file-audio-bg);color:var(--file-audio-color)}.text{background:var(--file-text-bg);color:var(--file-text-color)}
 </style>
