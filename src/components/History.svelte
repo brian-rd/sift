@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ArchiveRestore, Check, Clock3, FileInput, FolderInput, RotateCcw, Search, ShieldCheck, Trash2 } from '@lucide/svelte';
+  import { ArchiveRestore, Check, Clock3, ExternalLink, FileInput, FolderInput, RotateCcw, Search, ShieldCheck, Trash2 } from '@lucide/svelte';
   import type { HistoryItem } from '../lib/types';
   import { formatDate } from '../lib/format';
   import PageHeader from './PageHeader.svelte';
@@ -7,6 +7,7 @@
   export let items: HistoryItem[];
   export let onUndo: (id: string) => void;
   export let onUndoSession: (session: string) => void;
+  export let onOpenRecycleBin: () => void;
   let query = '';
   $: visible = items.filter((item) => item.fileName.toLowerCase().includes(query.toLowerCase()));
   $: sessions = [...new Set(visible.map((item) => item.session))];
@@ -14,7 +15,7 @@
   const iconFor = (action: HistoryItem['action']) => action === 'Trashed' ? Trash2 : action === 'Moved' ? FolderInput : action === 'Renamed' ? FileInput : action === 'Kept' ? Check : Clock3;
 </script>
 
-<PageHeader eyebrow="Your safety net" title="History" description="Every change Sift makes is recorded here and can be reversed." />
+<PageHeader eyebrow="Your safety net" title="History" description="Staged Trash and file moves can be reversed here. Finalized Trash is managed by Windows." />
 
 <div class="history-toolbar">
   <label><Search size={15} /><input bind:value={query} placeholder="Search file history" aria-label="Search file history" /></label>
@@ -34,7 +35,7 @@
             <span class:trash={item.action === 'Trashed'} class="action-icon"><Icon size={17} /></span>
             <div class="file"><strong>{item.fileName}</strong><span>{formatDate(item.timestamp)}</span></div>
             <div class="result"><span>{item.action}</span>{#if item.destination}<strong>{item.destination}</strong>{/if}</div>
-            {#if item.undoable}<button class="undo" on:click={() => onUndo(item.id)}><RotateCcw size={13} /> Undo</button>{:else}<span class="settled">No change</span>{/if}
+            {#if item.undoable}<button class="undo" on:click={() => onUndo(item.id)}><RotateCcw size={13} /> Undo</button>{:else if item.trashState === 'recycled'}<button class="undo" on:click={onOpenRecycleBin}><ExternalLink size={13} /> Recycle Bin</button>{:else}<span class="settled">No change</span>{/if}
           </article>
         {/each}
       </div>

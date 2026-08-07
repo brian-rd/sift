@@ -27,7 +27,7 @@ export const demoRules: Rule[] = [
 export const demoHistory: HistoryItem[] = [
   { id: 'history-1', fileName: 'tax-statement.pdf', action: 'Moved', destination: 'Documents / Finance', timestamp: now - 18 * 60_000, session: 'Today, 09:42', undoable: true },
   { id: 'history-2', fileName: 'wallpaper-08.jpg', action: 'Moved', destination: 'Pictures / Wallpapers', timestamp: now - 19 * 60_000, session: 'Today, 09:42', undoable: true },
-  { id: 'history-3', fileName: 'setup-old.exe', action: 'Trashed', timestamp: now - 21 * 60_000, session: 'Today, 09:42', undoable: true },
+  { id: 'history-3', fileName: 'setup-old.exe', action: 'Trashed', timestamp: now - 21 * 60_000, session: 'Today, 09:42', undoable: false, trashState: 'recycled' },
   { id: 'history-4', fileName: 'notes-draft.txt', action: 'Kept', timestamp: now - 22 * 60_000, session: 'Today, 09:42', undoable: false },
   { id: 'history-5', fileName: 'project-brief.pdf', action: 'Review later', timestamp: now - 24 * 60_000, session: 'Today, 09:42', undoable: true }
 ];

@@ -28,6 +28,7 @@
   --success-border: #cfdccf;
   --success-text: #477354;
   --danger-border: #cfa89f;
+  --danger-bg: #f7ece9;
   --danger-text: #9b4d3d;
   --dock-bg: rgba(244,243,239,.92);
   --primary-muted: #b7b7b0;
@@ -59,6 +60,7 @@
   --success-border: #36533d;
   --success-text: #90c69a;
   --danger-border: #744b43;
+  --danger-bg: #311d1a;
   --danger-text: #ee9b88;
   --dock-bg: rgba(17,19,16,.92);
   --primary-muted: #aaa9a1;

@@ -2,16 +2,18 @@
   import { onMount } from 'svelte';
   import { open } from '@tauri-apps/plugin-dialog';
   import { convertFileSrc } from '@tauri-apps/api/core';
+  import { getCurrentWindow } from '@tauri-apps/api/window';
   import Sidebar from './components/Sidebar.svelte';
   import Dashboard from './components/Dashboard.svelte';
   import SiftMode from './components/SiftMode.svelte';
   import Rules from './components/Rules.svelte';
   import History from './components/History.svelte';
   import Settings from './components/Settings.svelte';
-  import type { DownloadFile, HistoryItem, PinnedDestination, Rule, Screen, ShortcutBindings, ThemePreference } from './lib/types';
+  import TrashReview from './components/TrashReview.svelte';
+  import type { DownloadFile, HistoryItem, PinnedDestination, Rule, Screen, ShortcutBindings, ThemePreference, TrashItem } from './lib/types';
   import type { RuleMatch } from './lib/rules';
   import { demoFiles, demoHistory, demoRules } from './lib/demo';
-  import { getDefaultDestinations, isTauri, moveDownload, readTextPreview, revealDownload, scanDownloads, trashDownload, undoOperation } from './lib/backend';
+  import { finalizeTrash, getDefaultDestinations, isTauri, listTrash, moveDownload, openRecycleBin, readTextPreview, revealDownload, scanDownloads, trashDownload, undoOperation } from './lib/backend';
   import { DEFAULT_SHORTCUTS } from './lib/shortcuts';
 
   const demoDestinations: PinnedDestination[] = [
@@ -33,6 +35,11 @@
   let scanning = false;
   let toast = '';
   let toastTimer: ReturnType<typeof setTimeout>;
+  let trashItems: TrashItem[] = [];
+  let showTrash = false;
+  let trashIntent: 'review' | 'overview' | 'exit' = 'review';
+  let trashBusy = false;
+  let allowWindowClose = false;
 
   function notify(message: string) {
     toast = message;
@@ -93,21 +100,25 @@
     finally { scanning = false; }
   }
 
-  function record(file: DownloadFile, action: HistoryItem['action'], destination?: string, backendOperationId?: number) {
-    history = [{ id: crypto.randomUUID(), fileName: file.name, action, destination, timestamp: Date.now(), session: 'Just now', undoable: true, backendOperationId, file }, ...history];
+  function record(file: DownloadFile, action: HistoryItem['action'], destination?: string, backendOperationId?: number, trashState?: HistoryItem['trashState']) {
+    history = [{ id: crypto.randomUUID(), fileName: file.name, action, destination, timestamp: Date.now(), session: 'Just now', undoable: true, backendOperationId, file, trashState }, ...history];
   }
 
   async function siftAction(file: DownloadFile, action: 'trash' | 'keep' | 'fileAway', destination?: PinnedDestination): Promise<boolean> {
     try {
       let operationId: number | undefined;
-      if (isTauri && action === 'trash') operationId = (await trashDownload(file.path)).operationId;
+      if (action === 'trash') {
+        const result = isTauri ? await trashDownload(file.path) : { operationId: Date.now(), source: file.path, destination: file.path };
+        operationId = result.operationId;
+        trashItems = [{ operationId, originalPath: file.path, stagedPath: result.destination ?? file.path, name: file.name, extension: file.extension, size: file.size, modifiedAt: file.modifiedAt, createdAt: file.createdAt, kind: file.kind }, ...trashItems];
+      }
       if (action === 'fileAway') {
         if (!destination) return false;
         if (isTauri) operationId = (await moveDownload(file.path, destination.path)).operationId;
         rememberDestination(file, destination);
       }
       const historyAction: HistoryItem['action'] = action === 'trash' ? 'Trashed' : action === 'keep' ? 'Kept' : 'Moved';
-      record(file, historyAction, action === 'fileAway' ? destination?.path : undefined, operationId);
+      record(file, historyAction, action === 'fileAway' ? destination?.path : undefined, operationId, action === 'trash' ? 'staged' : undefined);
       files = files.filter((item) => item.path !== file.path);
       return true;
     } catch (error) {
@@ -129,6 +140,7 @@
       if (isTauri && item.backendOperationId) await undoOperation(item.backendOperationId);
     } catch (error) { notify(`Could not undo ${item.fileName}: ${error}`); return null; }
     history = history.filter((entry) => entry.id !== id);
+    if (item.backendOperationId) trashItems = trashItems.filter((trashItem) => trashItem.operationId !== item.backendOperationId);
     if (item.file && !files.some((file) => file.path === item.file?.path)) files = [item.file, ...files];
     notify(`Restored “${item.fileName}”`);
     return item.file ?? null;
@@ -144,6 +156,8 @@
       }
     } catch (error) { notify(`Session undo stopped: ${error}`); return; }
     history = history.filter((item) => item.session !== session || !item.undoable);
+    const restoredIds = new Set(entries.map((item) => item.backendOperationId).filter((id): id is number => typeof id === 'number'));
+    trashItems = trashItems.filter((item) => !restoredIds.has(item.operationId));
     files = [...restored.filter((restoredFile) => !files.some((file) => file.path === restoredFile.path)), ...files];
     notify(`${entries.length} session ${entries.length === 1 ? 'action' : 'actions'} restored`);
   }
@@ -154,9 +168,13 @@
       try {
         let operationId: number | undefined;
         if (isTauri && rule.actionType === 'move' && rule.destination) operationId = (await moveDownload(file.path, rule.destination)).operationId;
-        if (isTauri && rule.actionType === 'trash') operationId = (await trashDownload(file.path)).operationId;
+        if (rule.actionType === 'trash') {
+          const result = isTauri ? await trashDownload(file.path) : { operationId: Date.now(), source: file.path, destination: file.path };
+          operationId = result.operationId;
+          trashItems = [{ operationId, originalPath: file.path, stagedPath: result.destination ?? file.path, name: file.name, extension: file.extension, size: file.size, modifiedAt: file.modifiedAt, createdAt: file.createdAt, kind: file.kind }, ...trashItems];
+        }
         const action: HistoryItem['action'] = rule.actionType === 'trash' ? 'Trashed' : rule.actionType === 'review' ? 'Review later' : rule.actionType === 'rename' ? 'Renamed' : rule.actionType === 'ignore' ? 'Kept' : 'Moved';
-        record(file, action, rule.actionType === 'move' ? rule.destination : undefined, operationId);
+        record(file, action, rule.actionType === 'move' ? rule.destination : undefined, operationId, rule.actionType === 'trash' ? 'staged' : undefined);
         completed.push(file.path);
       } catch (error) { notify(`Stopped at ${file.name}: ${error}`); break; }
     }
@@ -188,9 +206,74 @@
     updatePinnedDestinations(pinnedDestinations.filter((item) => item.path !== destination.path));
   }
 
+  function trashFileSnapshot(item: TrashItem): DownloadFile {
+    const file: DownloadFile = { path: item.originalPath, name: item.name, extension: item.extension, size: item.size, modifiedAt: item.modifiedAt, createdAt: item.createdAt, kind: item.kind };
+    return isTauri && ['image', 'pdf', 'video', 'audio'].includes(item.kind) ? { ...file, previewUrl: convertFileSrc(item.originalPath) } : file;
+  }
+
+  async function restoreTrash(operationIds: number[]) {
+    if (!operationIds.length || trashBusy) return;
+    trashBusy = true;
+    const restored: DownloadFile[] = [];
+    try {
+      for (const operationId of operationIds) {
+        const item = trashItems.find((entry) => entry.operationId === operationId);
+        if (!item) continue;
+        if (isTauri) await undoOperation(operationId);
+        restored.push(trashFileSnapshot(item));
+        trashItems = trashItems.filter((entry) => entry.operationId !== operationId);
+        history = history.filter((entry) => entry.backendOperationId !== operationId);
+      }
+      files = [...restored.filter((restoredFile) => !files.some((file) => file.path === restoredFile.path)), ...files];
+      if (restored.length) notify(`Restored ${restored.length} ${restored.length === 1 ? 'file' : 'files'} from Trash`);
+    } catch (error) { notify(`Could not restore from Trash: ${error}`); }
+    finally { trashBusy = false; }
+  }
+
+  async function recycleTrash(operationIds: number[]) {
+    if (!operationIds.length || trashBusy) return;
+    trashBusy = true;
+    const recycled: number[] = [];
+    try {
+      for (const operationId of operationIds) {
+        if (isTauri) await finalizeTrash(operationId);
+        recycled.push(operationId);
+        trashItems = trashItems.filter((entry) => entry.operationId !== operationId);
+      }
+      const recycledIds = new Set(recycled);
+      history = history.map((entry) => recycledIds.has(entry.backendOperationId ?? -1) ? { ...entry, undoable: false, trashState: 'recycled' } : entry);
+      if (recycled.length) notify(`Moved ${recycled.length} ${recycled.length === 1 ? 'file' : 'files'} to the Windows Recycle Bin`);
+    } catch (error) { notify(`Could not move every file to the Recycle Bin: ${error}`); }
+    finally { trashBusy = false; }
+  }
+
+  function reviewTrash(intent: 'review' | 'overview' | 'exit' = 'review') {
+    trashIntent = intent;
+    showTrash = true;
+  }
+
+  function requestOverview() {
+    if (trashItems.length) reviewTrash('overview');
+    else active = 'dashboard';
+  }
+
+  async function continueAfterTrash() {
+    showTrash = false;
+    if (trashIntent === 'overview') active = 'dashboard';
+    if (trashIntent === 'exit' && isTauri) {
+      allowWindowClose = true;
+      await getCurrentWindow().close();
+    }
+  }
+
   async function openFile(file: DownloadFile) {
     if (!isTauri) return notify(`File Explorer would reveal ${file.name}`);
     try { await revealDownload(file.path); } catch (error) { notify(`Could not show file: ${error}`); }
+  }
+
+  async function showRecycleBin() {
+    if (!isTauri) return notify('The Windows Recycle Bin would open here');
+    try { await openRecycleBin(); } catch (error) { notify(`Could not open the Recycle Bin: ${error}`); }
   }
 
   async function loadTextPreview(file: DownloadFile) {
@@ -201,7 +284,16 @@
   onMount(() => {
     const colourQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handleSystemTheme = () => { if (theme === 'system') applyTheme('system'); };
+    let removeCloseListener: (() => void) | undefined;
     colourQuery.addEventListener('change', handleSystemTheme);
+
+    if (isTauri) {
+      void getCurrentWindow().onCloseRequested((event) => {
+        if (allowWindowClose || trashItems.length === 0) return;
+        event.preventDefault();
+        reviewTrash('exit');
+      }).then((unlisten) => removeCloseListener = unlisten);
+    }
 
     const storedTheme = localStorage.getItem('sift:theme');
     theme = storedTheme === 'light' || storedTheme === 'dark' ? storedTheme : 'system';
@@ -222,24 +314,30 @@
       else if (isTauri) {
         try { pinnedDestinations = await getDefaultDestinations(); } catch { pinnedDestinations = []; }
       }
-      if (isTauri) await scan();
+      if (isTauri) {
+        try { trashItems = await listTrash(); } catch { trashItems = []; }
+        await scan();
+      }
     })();
 
-    return () => colourQuery.removeEventListener('change', handleSystemTheme);
+    return () => {
+      colourQuery.removeEventListener('change', handleSystemTheme);
+      removeCloseListener?.();
+    };
   });
 </script>
 
 <div class="app-shell">
-  {#if active !== 'sift'}<Sidebar {active} onNavigate={(screen) => active = screen} reviewCount={files.length} />{/if}
+  {#if active !== 'sift'}<Sidebar {active} onNavigate={(screen) => active = screen} onWatchedFolder={() => active = 'settings'} reviewCount={files.length} />{/if}
   <div class:sift-view={active === 'sift'} class="content-shell">
     {#if active === 'dashboard'}
       <main class="page"><Dashboard {files} {scanning} isDemo={!isTauri} onScan={scan} onSift={() => active = 'sift'} onRules={() => active = 'rules'} onPreviewRules={() => active = 'rules'} /></main>
     {:else if active === 'sift'}
-      <SiftMode {files} {pinnedDestinations} {shortcuts} {getSuggestions} onAction={siftAction} onPickDestination={pickDestination} onBack={() => active = 'dashboard'} onOpen={openFile} onUndo={undoLatest} onLoadText={loadTextPreview} />
+      <SiftMode {files} {pinnedDestinations} {shortcuts} trashCount={trashItems.length} {getSuggestions} onAction={siftAction} onPickDestination={pickDestination} onBack={requestOverview} onOpen={openFile} onUndo={undoLatest} onViewTrash={() => reviewTrash('review')} onLoadText={loadTextPreview} />
     {:else if active === 'rules'}
       <main class="page"><Rules {rules} {files} onUpdate={(next) => rules = next} onRun={runRules} /></main>
     {:else if active === 'history'}
-      <main class="page"><History items={history} onUndo={undoItem} onUndoSession={undoSession} /></main>
+      <main class="page"><History items={history} onUndo={undoItem} onUndoSession={undoSession} onOpenRecycleBin={showRecycleBin} /></main>
     {:else if active === 'settings'}
       <main class="page"><Settings {watchedFolder} {theme} {shortcuts} {pinnedDestinations} onFolderChange={(folder) => watchedFolder = folder} onPickFolder={pickWatchedFolder} onThemeChange={updateTheme} onShortcutsChange={updateShortcuts} onAddPinned={addPinnedDestination} onRemovePinned={removePinnedDestination} /></main>
     {/if}
@@ -247,3 +345,4 @@
 </div>
 
 {#if toast}<div class="toast" role="status">{toast}</div>{/if}
+{#if showTrash}<TrashReview items={trashItems} intent={trashIntent} busy={trashBusy} onRestore={restoreTrash} onRecycle={recycleTrash} onClose={() => showTrash = false} onContinue={continueAfterTrash} />{/if}
