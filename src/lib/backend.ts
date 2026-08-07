@@ -36,3 +36,7 @@ export async function undoOperation(operationId: number) {
 export async function getDefaultDestinations() {
   return invoke<PinnedDestination[]>('default_destinations');
 }
+
+export async function readTextPreview(path: string) {
+  return invoke<string>('read_text_preview', { path });
+}

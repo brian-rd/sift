@@ -5,6 +5,7 @@ use rusqlite::{params, Connection};
 use serde::Serialize;
 use std::{
     fs,
+    io::Read,
     path::{Path, PathBuf},
     process::Command,
     sync::Mutex,
@@ -116,8 +117,11 @@ fn downloads_dir(folder: Option<String>) -> Result<PathBuf, SiftError> {
 }
 
 #[tauri::command]
-fn scan_downloads(folder: Option<String>) -> Result<ScanResult, SiftError> {
+fn scan_downloads(folder: Option<String>, app: tauri::AppHandle) -> Result<ScanResult, SiftError> {
     let root = downloads_dir(folder)?;
+    app.asset_protocol_scope()
+        .allow_directory(&root, false)
+        .map_err(|error| SiftError::Message(format!("Could not enable previews: {error}")))?;
     let mut files = Vec::new();
     let mut total_bytes = 0;
     let mut skipped_incomplete = 0;
@@ -183,6 +187,35 @@ fn scan_downloads(folder: Option<String>) -> Result<ScanResult, SiftError> {
         total_bytes,
         skipped_incomplete,
     })
+}
+
+#[tauri::command]
+fn read_text_preview(path: String, app: tauri::AppHandle) -> Result<String, SiftError> {
+    const PREVIEW_LIMIT: u64 = 64 * 1024;
+    let file = PathBuf::from(path).canonicalize()?;
+    let metadata = file.symlink_metadata()?;
+    let extension = file
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    if !metadata.is_file() || metadata.file_type().is_symlink() || classify(&extension) != "text" {
+        return Err(SiftError::Message(
+            "Only supported text files can be previewed".into(),
+        ));
+    }
+    if !app.asset_protocol_scope().is_allowed(&file) {
+        return Err(SiftError::Message(
+            "The file is outside the watched folder".into(),
+        ));
+    }
+
+    let mut bytes = Vec::new();
+    fs::File::open(file)?
+        .take(PREVIEW_LIMIT)
+        .read_to_end(&mut bytes)?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 fn unique_destination(folder: &Path, file_name: &str) -> PathBuf {
@@ -394,6 +427,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             scan_downloads,
+            read_text_preview,
             move_download,
             trash_download,
             undo_operation,

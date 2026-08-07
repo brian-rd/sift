@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { open } from '@tauri-apps/plugin-dialog';
+  import { convertFileSrc } from '@tauri-apps/api/core';
   import Sidebar from './components/Sidebar.svelte';
   import Dashboard from './components/Dashboard.svelte';
   import SiftMode from './components/SiftMode.svelte';
@@ -10,7 +11,7 @@
   import type { DownloadFile, HistoryItem, PinnedDestination, Rule, Screen, ShortcutBindings } from './lib/types';
   import type { RuleMatch } from './lib/rules';
   import { demoFiles, demoHistory, demoRules } from './lib/demo';
-  import { getDefaultDestinations, isTauri, moveDownload, revealDownload, scanDownloads, trashDownload, undoOperation } from './lib/backend';
+  import { getDefaultDestinations, isTauri, moveDownload, readTextPreview, revealDownload, scanDownloads, trashDownload, undoOperation } from './lib/backend';
 
   const defaultShortcuts: ShortcutBindings = { keep: 'ArrowUp', trash: 'ArrowDown', undo: 'ArrowLeft', fileAway: 'ArrowRight' };
   const demoDestinations: PinnedDestination[] = [
@@ -62,7 +63,7 @@
     }
     try {
       const result = await scanDownloads(watchedFolder);
-      files = result.files;
+      files = result.files.map((file) => ['image', 'pdf', 'video', 'audio'].includes(file.kind) ? { ...file, previewUrl: convertFileSrc(file.path) } : file);
       watchedFolder = result.folder;
       notify(`Scan complete — ${result.files.length} files found${result.skippedIncomplete ? `, ${result.skippedIncomplete} still downloading` : ''}`);
     } catch (error) { notify(`Could not scan folder: ${error}`); }
@@ -157,6 +158,11 @@
     try { await revealDownload(file.path); } catch (error) { notify(`Could not show file: ${error}`); }
   }
 
+  async function loadTextPreview(file: DownloadFile) {
+    if (!isTauri) return `Preview of ${file.name}\n\nThis is example text shown in browser demo mode. The installed Windows app reads up to 64 KB directly from the selected file.`;
+    return readTextPreview(file.path);
+  }
+
   onMount(async () => {
     try { rememberedDestinations = JSON.parse(localStorage.getItem('sift:remembered-destinations') ?? '{}'); } catch { rememberedDestinations = {}; }
     if (isTauri) {
@@ -172,7 +178,7 @@
     {#if active === 'dashboard'}
       <main class="page"><Dashboard {files} {scanning} isDemo={!isTauri} onScan={scan} onSift={() => active = 'sift'} onRules={() => active = 'rules'} onPreviewRules={() => active = 'rules'} /></main>
     {:else if active === 'sift'}
-      <SiftMode {files} {pinnedDestinations} {shortcuts} {getSuggestions} onAction={siftAction} onPickDestination={pickDestination} onBack={() => active = 'dashboard'} onOpen={openFile} onUndo={undoLatest} />
+      <SiftMode {files} {pinnedDestinations} {shortcuts} {getSuggestions} onAction={siftAction} onPickDestination={pickDestination} onBack={() => active = 'dashboard'} onOpen={openFile} onUndo={undoLatest} onLoadText={loadTextPreview} />
     {:else if active === 'rules'}
       <main class="page"><Rules {rules} {files} onUpdate={(next) => rules = next} onRun={runRules} /></main>
     {:else if active === 'history'}

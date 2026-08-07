@@ -13,6 +13,7 @@
   export let onBack: () => void;
   export let onOpen: (file: DownloadFile) => void;
   export let onUndo: () => Promise<DownloadFile | null>;
+  export let onLoadText: (file: DownloadFile) => Promise<string>;
 
   let processed = 0;
   let total = files.length;
@@ -23,12 +24,33 @@
   let showDestinations = false;
   let destinationOptions: PinnedDestination[] = [];
   let noticeTimer: ReturnType<typeof setTimeout>;
+  let previewPath = '';
+  let textPreview = '';
+  let textPreviewError = '';
 
   $: current = files[0];
   $: progress = total ? Math.round((processed / total) * 100) : 100;
   $: currentSuggestions = current ? getSuggestions(current) : [];
+  $: if (current?.kind === 'text' && current.path !== previewPath) void loadText(current);
+  $: if (current?.kind !== 'text' && previewPath) {
+    previewPath = '';
+    textPreview = '';
+    textPreviewError = '';
+  }
 
   const keyLabel = (code: string) => ({ ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→' })[code] ?? code.replace(/^Key/, '');
+
+  async function loadText(file: DownloadFile) {
+    previewPath = file.path;
+    textPreview = '';
+    textPreviewError = '';
+    try {
+      const content = await onLoadText(file);
+      if (current?.path === file.path) textPreview = content;
+    } catch (error) {
+      if (current?.path === file.path) textPreviewError = `Preview unavailable: ${error}`;
+    }
+  }
 
   async function commit(action: 'trash' | 'keep' | 'fileAway', destination?: PinnedDestination) {
     if (!current || busy) return;
@@ -123,8 +145,15 @@
         <div class="preview-content">
           {#if current.kind === 'image' && current.previewUrl}
             <img src={current.previewUrl} alt={`Preview of ${current.name}`} />
+          {:else if current.kind === 'pdf' && current.previewUrl}
+            <iframe src={current.previewUrl} title={`Preview of ${current.name}`}></iframe>
+          {:else if current.kind === 'video' && current.previewUrl}
+            <!-- svelte-ignore a11y_media_has_caption -->
+            <video src={current.previewUrl} controls preload="metadata"></video>
+          {:else if current.kind === 'audio' && current.previewUrl}
+            <div class="audio-preview"><FileIcon kind={current.kind} extension={current.extension} size={54} /><audio src={current.previewUrl} controls preload="metadata"></audio></div>
           {:else if current.kind === 'text'}
-            <div class="text-preview"><span>TEXT PREVIEW</span><h3>{current.name}</h3><p>Preview content is loading from the selected file.</p></div>
+            <div class="text-preview"><span>TEXT PREVIEW</span><h3>{current.name}</h3>{#if textPreview}<pre>{textPreview}</pre>{:else if textPreviewError}<p>{textPreviewError}</p>{:else}<p>Loading preview…</p>{/if}</div>
           {:else}
             <div class="generic-preview"><FileIcon kind={current.kind} extension={current.extension} size={54} /><strong>{current.extension.toUpperCase() || 'FILE'}</strong><span>No inline preview for this file type</span></div>
           {/if}
@@ -177,4 +206,5 @@
 
 <style>
   .sift-shell{min-height:100%;display:flex;flex-direction:column;background:var(--bg)}.sift-header{min-height:70px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;border-bottom:1px solid var(--border);padding:9px 28px;background:var(--bg)}.back,.undo-top{display:flex;align-items:center;gap:7px;border:0;background:transparent;color:var(--text-2);font:600 11px var(--font-ui);cursor:pointer}.undo-top{justify-self:end}.undo-top:disabled{opacity:.45}.progress-meta{display:flex;align-items:center;gap:15px}.progress-copy{display:flex;flex-direction:column;align-items:flex-end;font-size:9px;color:var(--text-3)}.progress-copy strong{font-size:11px;color:var(--ink)}.progress{width:min(34vw,420px);height:8px;border-radius:999px;background:var(--surface-3);overflow:hidden}.progress span{display:block;height:100%;border-radius:inherit;background:var(--accent);transition:width .2s}.sift-main{flex:1;display:grid;grid-template-columns:minmax(360px,1.22fr) minmax(340px,.78fr);gap:46px;align-items:center;max-width:1120px;width:100%;margin:0 auto;padding:34px 44px 26px}.preview-card{height:min(56vh,560px);min-height:360px;background:var(--surface-2);border:1px solid var(--border);border-radius:16px;position:relative;overflow:hidden}.preview-top{position:absolute;z-index:3;top:14px;left:14px;right:14px;display:flex;justify-content:space-between}.type-pill,.preview-top button{background:var(--surface-overlay);color:var(--ink);backdrop-filter:blur(8px)}.type-pill{padding:5px 8px;border-radius:6px;font-size:9px;font-weight:750;letter-spacing:.08em}.preview-top button{width:34px;height:34px;display:grid;place-items:center;border:1px solid var(--border);border-radius:8px;cursor:pointer}.preview-content{height:100%;display:grid;place-items:center}.preview-content img{width:100%;height:100%;object-fit:cover}.generic-preview{display:flex;flex-direction:column;align-items:center;gap:12px;color:var(--text-3)}.generic-preview :global(.file-icon){width:92px;height:92px;border-radius:18px}.generic-preview strong{font:650 17px var(--font-display);color:var(--text-2)}.generic-preview span{font-size:11px}.text-preview{width:72%;min-height:68%;background:var(--surface);padding:42px;box-shadow:var(--shadow-lg)}.text-preview span{font-size:8px;letter-spacing:.13em;color:var(--text-3)}.text-preview h3{font:650 21px var(--font-display);margin:18px 0}.text-preview p{font:12px/1.8 Georgia,serif;color:var(--text-2)}.file-details .eyebrow,.complete-card .eyebrow{font-size:9px;letter-spacing:.13em;text-transform:uppercase;font-weight:750;color:var(--accent);margin:0 0 9px}.file-details h1,.complete-card h1{font:650 28px/1.18 var(--font-display);letter-spacing:-.035em;margin:0;overflow-wrap:anywhere}.metadata-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;margin:20px 0;background:var(--border);border:1px solid var(--border);border-radius:10px;overflow:hidden}.metadata-grid div{padding:11px 12px;background:var(--surface)}.metadata-grid dt{font-size:8px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-3);font-weight:700}.metadata-grid dd{margin:4px 0 0;font-size:11px;font-weight:650;color:var(--ink)}.suggestion{display:flex;gap:12px;align-items:center;padding:13px;border:1px solid var(--success-border);background:var(--success-bg);border-radius:10px}.suggestion.empty{border-style:dashed;background:var(--surface-2);border-color:var(--border-strong)}.suggestion-icon{width:38px;height:38px;display:grid;place-items:center;background:var(--success-strong);color:var(--success-text);border-radius:9px}.suggestion div{display:flex;flex-direction:column}.suggestion span{font-size:9px;color:var(--text-3)}.suggestion strong{font-size:11px;margin:3px 0}.suggestion small{font-size:9px;color:var(--success-text)}.pinned{margin-top:17px}.pinned>span{font-size:8px;text-transform:uppercase;letter-spacing:.09em;color:var(--text-3);font-weight:700}.pinned>div{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}.pinned button{height:30px;display:flex;align-items:center;gap:6px;padding:0 9px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--text-2);font:600 9px var(--font-ui);cursor:pointer}.pinned button:hover{border-color:var(--border-strong);color:var(--ink)}.pinned kbd{font-size:8px}.keyboard-hint{display:flex;align-items:center;gap:7px;color:var(--text-3);font-size:10px;margin-top:16px}.action-dock{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:8px;padding:10px 18px 14px;border-top:1px solid var(--border);background:var(--dock-bg);backdrop-filter:blur(12px)}.action{height:64px;position:relative;display:flex;align-items:center;justify-content:center;gap:10px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text-2);cursor:pointer;transition:border-color .16s,background .16s,color .16s}.action:hover{border-color:var(--border-strong);background:var(--surface-2)}.action>span{position:absolute;left:8px;top:8px;min-width:21px;height:21px;padding:0 5px;display:grid;place-items:center;border-radius:5px;background:var(--surface-3);color:var(--text-3);font:600 11px var(--font-mono)}.action div{display:flex;flex-direction:column;text-align:left}.action strong{font-size:11px}.action small{font-size:8px;color:var(--text-3);margin-top:2px}.action.trash:hover{border-color:var(--danger-border);color:var(--danger-text)}.action.file-away{background:var(--ink);color:var(--bg);border-color:var(--ink)}.action.file-away>span{background:rgba(255,255,255,.13);color:#fff}.action.file-away small{color:var(--primary-muted)}.action:disabled{opacity:.48;cursor:not-allowed}.restore-toast{position:fixed;z-index:30;top:82px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:7px;padding:9px 12px;border-radius:8px;background:var(--success-text);color:#fff;font-size:10px;box-shadow:var(--shadow-lg)}.complete-card{margin:auto;text-align:center;max-width:380px}.complete-icon{width:76px;height:76px;border-radius:50%;display:grid;place-items:center;background:var(--success-bg);color:var(--success-text);margin:0 auto 24px}.complete-card>p:not(.eyebrow){color:var(--text-2);font-size:13px;line-height:1.6}.primary{border:0;border-radius:8px;background:var(--ink);color:var(--bg);padding:11px 16px;font:650 12px var(--font-ui);cursor:pointer;margin-top:12px}.overlay{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:24px;background:rgba(10,11,9,.58);backdrop-filter:blur(3px)}.destination-dialog{width:min(480px,100%);padding:22px;background:var(--surface);border:1px solid var(--border);border-radius:15px;box-shadow:var(--shadow-lg)}.destination-dialog>header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px}.destination-dialog header p{margin:0 0 4px;color:var(--accent);font-size:8px;text-transform:uppercase;letter-spacing:.11em;font-weight:750}.destination-dialog h2{margin:0;font:650 20px var(--font-display)}.destination-dialog header button{width:34px;height:34px;border:0;border-radius:8px;background:var(--surface-2);color:var(--text-2);display:grid;place-items:center;cursor:pointer}.destination-list{display:flex;flex-direction:column;gap:6px}.destination-list>button{min-height:58px;display:grid;grid-template-columns:24px 22px 1fr auto;gap:9px;align-items:center;padding:8px 10px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--text-2);text-align:left;cursor:pointer}.destination-list>button:hover{border-color:var(--accent);background:var(--surface-2)}.destination-list>button>span{width:22px;height:22px;display:grid;place-items:center;border-radius:5px;background:var(--surface-3);font-size:9px}.destination-list div{display:flex;flex-direction:column;min-width:0}.destination-list strong{font-size:11px;color:var(--ink)}.destination-list small{font-size:8px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.choose-other{width:100%;height:36px;margin-top:10px;border:1px dashed var(--border-strong);border-radius:8px;background:transparent;color:var(--text-2);font:600 10px var(--font-ui);cursor:pointer}@media(max-width:850px){.sift-main{grid-template-columns:1fr;gap:22px;padding:24px}.preview-card{height:40vh}.action-dock{grid-template-columns:repeat(2,1fr)}.keyboard-hint{display:none}}@media(max-width:600px){.sift-header{padding:8px 12px}.progress{width:34vw}.progress-copy span,.undo-top kbd{display:none}.sift-main{padding:18px 14px}.preview-card{min-height:250px}.file-details h1{font-size:22px}.action-dock{padding-bottom:72px}.action small{display:none}.action{height:52px}}
+  .preview-content img,.preview-content video,.preview-content iframe{width:100%;height:100%;border:0;object-fit:contain;background:#111}.audio-preview{display:flex;flex-direction:column;align-items:center;gap:28px;width:min(420px,80%)}.audio-preview audio{width:100%}.text-preview{height:68%;min-height:0;overflow:auto}.text-preview pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.65 var(--font-mono);color:var(--text-2)}
 </style>
