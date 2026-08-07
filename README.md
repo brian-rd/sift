@@ -40,5 +40,5 @@ The Windows app previews supported images, PDFs, videos, audio, text, and render
 - Rule runs require a file-by-file preview and explicit confirmation.
 - A move never overwrites an existing file.
 - Trash first moves files into Sift's private staging folder. Leaving Sift or returning to Overview opens a review list where files can be restored individually or in a selection, or sent on to the Windows Recycle Bin.
-- Once a file is in the Windows Recycle Bin, programmatic restoration is best-effort: it cannot succeed if the bin was emptied, its metadata is unavailable, or the original path is occupied. History opens the Recycle Bin as the reliable manual fallback.
+- Once a file is sent to the Windows Recycle Bin, Sift no longer offers Undo for it. History opens the Recycle Bin so Windows can handle any final restoration manually.
 - Moves are recorded and can be reversed while the original path remains free.
