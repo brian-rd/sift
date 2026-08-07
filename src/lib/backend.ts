@@ -1,4 +1,4 @@
-import type { PinnedDestination, ScanResult } from './types';
+import type { PinnedDestination, ScanResult, TrashItem } from './types';
 
 export const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
@@ -25,8 +25,20 @@ export async function trashDownload(path: string) {
   return invoke<OperationResult>('trash_download', { path });
 }
 
+export async function listTrash() {
+  return invoke<TrashItem[]>('list_trash');
+}
+
+export async function finalizeTrash(operationId: number) {
+  return invoke('finalize_trash', { operationId });
+}
+
 export async function revealDownload(path: string) {
   return invoke('reveal_download', { path });
+}
+
+export async function openRecycleBin() {
+  return invoke('open_recycle_bin');
 }
 
 export async function undoOperation(operationId: number) {

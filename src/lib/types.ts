@@ -21,6 +21,18 @@ export interface PinnedDestination {
   path: string;
 }
 
+export interface TrashItem {
+  operationId: number;
+  originalPath: string;
+  stagedPath: string;
+  name: string;
+  extension: string;
+  size: number;
+  modifiedAt: number;
+  createdAt: number;
+  kind: FileKind;
+}
+
 export type ShortcutAction = 'keep' | 'trash' | 'undo' | 'fileAway';
 export type ShortcutBindings = Record<ShortcutAction, string>;
 export type ThemePreference = 'system' | 'light' | 'dark';
@@ -49,6 +61,7 @@ export interface HistoryItem {
   undoable: boolean;
   backendOperationId?: number;
   file?: DownloadFile;
+  trashState?: 'staged' | 'recycled';
 }
 
 export interface ScanResult {

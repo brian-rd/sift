@@ -26,6 +26,8 @@ enum SiftError {
     #[error("{0}")]
     Trash(#[from] trash::Error),
     #[error("{0}")]
+    Tauri(#[from] tauri::Error),
+    #[error("{0}")]
     Message(String),
 }
 
@@ -68,6 +70,20 @@ struct OperationResult {
     operation_id: i64,
     source: String,
     destination: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TrashEntry {
+    operation_id: i64,
+    original_path: String,
+    staged_path: String,
+    name: String,
+    extension: String,
+    size: u64,
+    modified_at: u64,
+    created_at: u64,
+    kind: String,
 }
 
 #[derive(Serialize)]
@@ -241,6 +257,54 @@ fn unique_destination(folder: &Path, file_name: &str) -> PathBuf {
     folder.join(format!("{stem}-{}", unix_millis(SystemTime::now())))
 }
 
+fn move_file(source: &Path, destination: &Path) -> Result<(), std::io::Error> {
+    fs::rename(source, destination).or_else(|_| {
+        fs::copy(source, destination)?;
+        fs::remove_file(source)
+    })
+}
+
+fn comparable_windows_path(path: &Path) -> String {
+    let raw = path.to_string_lossy().replace('/', "\\");
+    let normalized = if let Some(rest) = raw.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{rest}")
+    } else {
+        raw.strip_prefix(r"\\?\").unwrap_or(&raw).to_owned()
+    };
+    normalized.trim_end_matches('\\').to_lowercase()
+}
+
+fn trash_entry(
+    operation_id: i64,
+    original_path: String,
+    staged_path: String,
+) -> Option<TrashEntry> {
+    let path = PathBuf::from(&staged_path);
+    let original = PathBuf::from(&original_path);
+    let metadata = path.symlink_metadata().ok()?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() {
+        return None;
+    }
+    let name = original.file_name()?.to_string_lossy().into_owned();
+    let extension = original
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    let modified = metadata.modified().unwrap_or(UNIX_EPOCH);
+    Some(TrashEntry {
+        operation_id,
+        original_path,
+        staged_path,
+        name,
+        extension: extension.clone(),
+        size: metadata.len(),
+        modified_at: unix_millis(modified),
+        created_at: unix_millis(metadata.created().unwrap_or(modified)),
+        kind: classify(&extension).to_owned(),
+    })
+}
+
 fn record_operation(
     db: &Connection,
     action: &str,
@@ -274,10 +338,7 @@ fn move_download(
         .and_then(|value| value.to_str())
         .ok_or_else(|| SiftError::Message("Invalid file name".into()))?;
     let target = unique_destination(&destination_dir, file_name);
-    fs::rename(&source_path, &target).or_else(|_| {
-        fs::copy(&source_path, &target)?;
-        fs::remove_file(&source_path)
-    })?;
+    move_file(&source_path, &target)?;
     let db = state
         .db
         .lock()
@@ -291,24 +352,86 @@ fn move_download(
 }
 
 #[tauri::command]
-fn trash_download(path: String, state: State<'_, AppState>) -> Result<OperationResult, SiftError> {
+fn trash_download(
+    path: String,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<OperationResult, SiftError> {
     let source = PathBuf::from(&path).canonicalize()?;
     if !source.is_file() || source.symlink_metadata()?.file_type().is_symlink() {
         return Err(SiftError::Message(
-            "Only regular files can be sent to Trash".into(),
+            "Only regular files can be moved to Sift Trash".into(),
         ));
     }
-    trash::delete(&source)?;
+    let trash_dir = app.path().app_local_data_dir()?.join("trash");
+    fs::create_dir_all(&trash_dir)?;
+    let file_name = source
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| SiftError::Message("Invalid file name".into()))?;
+    let staged = unique_destination(&trash_dir, file_name);
+    move_file(&source, &staged)?;
     let db = state
         .db
         .lock()
         .map_err(|_| SiftError::Message("History database is unavailable".into()))?;
-    let operation_id = record_operation(&db, "trash", &source, None, true)?;
+    let operation_id = record_operation(&db, "stage_trash", &source, Some(&staged), true)?;
     Ok(OperationResult {
         operation_id,
         source: path,
-        destination: None,
+        destination: Some(staged.to_string_lossy().into_owned()),
     })
+}
+
+#[tauri::command]
+fn list_trash(state: State<'_, AppState>) -> Result<Vec<TrashEntry>, SiftError> {
+    let db = state
+        .db
+        .lock()
+        .map_err(|_| SiftError::Message("History database is unavailable".into()))?;
+    let mut statement = db.prepare(
+        "SELECT id, source, destination FROM operations
+         WHERE action = 'stage_trash' AND undone = 0 AND destination IS NOT NULL
+         ORDER BY created_at DESC",
+    )?;
+    let rows = statement.query_map([], |row| {
+        Ok((
+            row.get::<_, i64>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+        ))
+    })?;
+    Ok(rows
+        .filter_map(Result::ok)
+        .filter_map(|(id, source, destination)| trash_entry(id, source, destination))
+        .collect())
+}
+
+#[tauri::command]
+fn finalize_trash(operation_id: i64, state: State<'_, AppState>) -> Result<(), SiftError> {
+    let db = state
+        .db
+        .lock()
+        .map_err(|_| SiftError::Message("History database is unavailable".into()))?;
+    let (action, destination, undone): (String, Option<String>, bool) = db.query_row(
+        "SELECT action, destination, undone FROM operations WHERE id = ?1",
+        [operation_id],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    )?;
+    if action != "stage_trash" || undone {
+        return Err(SiftError::Message(
+            "This Trash item is no longer pending".into(),
+        ));
+    }
+    let staged = PathBuf::from(
+        destination.ok_or_else(|| SiftError::Message("Trash location is missing".into()))?,
+    );
+    trash::delete(&staged)?;
+    db.execute(
+        "UPDATE operations SET action = 'trash', destination = NULL WHERE id = ?1",
+        [operation_id],
+    )?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -326,11 +449,29 @@ fn undo_operation(operation_id: i64, state: State<'_, AppState>) -> Result<(), S
     if undone {
         return Err(SiftError::Message("This action was already undone".into()));
     }
+    if action == "stage_trash" {
+        let from = PathBuf::from(
+            destination.ok_or_else(|| SiftError::Message("Trash location is missing".into()))?,
+        );
+        let to = PathBuf::from(&source);
+        if to.exists() {
+            return Err(SiftError::Message(
+                "The original path is already occupied".into(),
+            ));
+        }
+        move_file(&from, &to)?;
+        db.execute(
+            "UPDATE operations SET undone = 1 WHERE id = ?1",
+            [operation_id],
+        )?;
+        return Ok(());
+    }
     if action == "trash" {
         let source_path = PathBuf::from(&source);
+        let comparable_source = comparable_windows_path(&source_path);
         let item = trash::os_limited::list()?
             .into_iter()
-            .filter(|item| item.original_path() == source_path)
+            .filter(|item| comparable_windows_path(&item.original_path()) == comparable_source)
             .max_by_key(|item| item.time_deleted)
             .ok_or_else(|| SiftError::Message("The file is no longer in the Recycle Bin".into()))?;
         trash::os_limited::restore_all([item])?;
@@ -365,6 +506,14 @@ fn reveal_download(path: String) -> Result<(), SiftError> {
     let file = PathBuf::from(path).canonicalize()?;
     Command::new("explorer")
         .arg(format!("/select,{}", file.display()))
+        .spawn()?;
+    Ok(())
+}
+
+#[tauri::command]
+fn open_recycle_bin() -> Result<(), SiftError> {
+    Command::new("explorer")
+        .arg("shell:RecycleBinFolder")
         .spawn()?;
     Ok(())
 }
@@ -430,10 +579,35 @@ pub fn run() {
             read_text_preview,
             move_download,
             trash_download,
+            list_trash,
+            finalize_trash,
             undo_operation,
             reveal_download,
+            open_recycle_bin,
             default_destinations
         ])
         .run(tauri::generate_context!())
         .expect("error while running Sift");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::comparable_windows_path;
+    use std::path::Path;
+
+    #[test]
+    fn compares_extended_and_standard_drive_paths_equally() {
+        assert_eq!(
+            comparable_windows_path(Path::new(r"\\?\C:\Users\Brian\Downloads\file.txt")),
+            comparable_windows_path(Path::new(r"C:\Users\Brian\Downloads\file.txt"))
+        );
+    }
+
+    #[test]
+    fn compares_extended_and_standard_unc_paths_equally() {
+        assert_eq!(
+            comparable_windows_path(Path::new(r"\\?\UNC\server\share\file.txt")),
+            comparable_windows_path(Path::new(r"\\server\share\file.txt"))
+        );
+    }
 }
