@@ -6,7 +6,7 @@
     <img alt="Windows only" src="https://img.shields.io/badge/platform-Windows-54F0A7?style=flat-square&labelColor=171A18" />
     <img alt="Tauri 2" src="https://img.shields.io/badge/Tauri-2-54F0A7?style=flat-square&labelColor=171A18" />
     <img alt="Svelte 5" src="https://img.shields.io/badge/Svelte-5-54F0A7?style=flat-square&labelColor=171A18" />
-    <img alt="Installer size 1.61 MiB" src="https://img.shields.io/badge/installer-1.61_MiB-54F0A7?style=flat-square&labelColor=171A18" />
+    <img alt="Installer size 1.63 MiB" src="https://img.shields.io/badge/installer-1.63_MiB-54F0A7?style=flat-square&labelColor=171A18" />
   </p>
 </div>
 
@@ -14,7 +14,7 @@ Sift is a lightweight, local-first Windows desktop app for reviewing and organis
 
 ## Download
 
-Download the Windows x64 installer from the [v1.0.0 Beta 1 release](https://github.com/brian-rd/sift/releases/tag/v1.0.0-beta.1). The beta installer is currently unsigned, so Windows SmartScreen may show an “unknown publisher” warning.
+Download the Windows x64 installer from the [v1.0.0 Beta 2 release](https://github.com/brian-rd/sift/releases/tag/v1.0.0-beta.2). The beta installer is currently unsigned, so Windows SmartScreen may show an “unknown publisher” warning.
 
 ![Sift overview in dark mode](docs/media/overview.jpg)
 
