@@ -611,6 +611,7 @@
 
   onMount(() => {
     const colourQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const disableNativeContextMenu = (event: MouseEvent) => event.preventDefault();
     const handleSystemTheme = () => {
       if (theme === 'system') applyTheme('system');
     };
@@ -620,6 +621,7 @@
     }, 3_000);
     let removeCloseListener: (() => void) | undefined;
     colourQuery.addEventListener('change', handleSystemTheme);
+    window.addEventListener('contextmenu', disableNativeContextMenu, { capture: true });
 
     if (isTauri) {
       void getCurrentWindow()
@@ -692,6 +694,7 @@
 
     return () => {
       colourQuery.removeEventListener('change', handleSystemTheme);
+      window.removeEventListener('contextmenu', disableNativeContextMenu, { capture: true });
       clearInterval(greetingTimer);
       clearInterval(watchTimer);
       removeCloseListener?.();
