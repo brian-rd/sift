@@ -2796,6 +2796,7 @@ dependencies = [
  "mime_guess",
  "rusqlite",
  "serde",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

@@ -25,6 +25,11 @@ export interface DownloadFile {
   previewUrl?: string;
 }
 
+export interface DuplicateGroup {
+  size: number;
+  files: DownloadFile[];
+}
+
 export interface PinnedDestination {
   name: string;
   path: string;

@@ -3,10 +3,12 @@
     ArrowRight,
     ArchiveRestore,
     Clock3,
+    CopyCheck,
     FileCheck2,
     HardDrive,
     Inbox,
     ListChecks,
+    LoaderCircle,
     ShieldCheck,
     Sparkles,
   } from '@lucide/svelte';
@@ -26,6 +28,8 @@
   export let onSift: () => void;
   export let onRules: () => void;
   export let onPreviewRules: () => void;
+  export let duplicateScanning: boolean;
+  export let onFindDuplicates: () => void;
 
   $: totalBytes = files.reduce((sum, file) => sum + file.size, 0);
   $: ruleMatches = evaluateRules(files, rules);
@@ -102,6 +106,19 @@
     <span class="stat-icon amber"><Clock3 size={17} /></span>
     <div><strong>{largeOrOld.length}</strong><span>Large or old</span></div>
   </article>
+</section>
+
+<section class="duplicate-card" aria-labelledby="duplicate-title">
+  <span class="duplicate-icon"><CopyCheck size={19} /></span>
+  <div>
+    <p>Duplicate cleanup</p>
+    <strong id="duplicate-title">Find exact copies</strong>
+    <span>Compare likely matches by content, then choose which copy to keep.</span>
+  </div>
+  <button on:click={onFindDuplicates} disabled={duplicateScanning}
+    >{#if duplicateScanning}<span class="spin"><LoaderCircle size={14} /></span> Comparing files…{:else}Find
+      duplicates{/if}</button
+  >
 </section>
 
 <div class="dashboard-grid">
@@ -333,6 +350,78 @@
     color: var(--text-3);
     margin-top: 2px;
   }
+  .duplicate-card {
+    min-height: 76px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 18px;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    background: var(--surface);
+  }
+  .duplicate-icon {
+    width: 38px;
+    height: 38px;
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    border-radius: 9px;
+    background: var(--surface-2);
+    color: var(--accent-pressed);
+  }
+  .duplicate-card > div {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .duplicate-card p {
+    margin: 0 0 2px;
+    color: var(--text-3);
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+  }
+  .duplicate-card strong {
+    font: 650 13px var(--font-display);
+  }
+  .duplicate-card > div > span {
+    margin-top: 2px;
+    color: var(--text-3);
+    font-size: 9px;
+  }
+  .duplicate-card button {
+    min-width: 124px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin-left: auto;
+    border: 0;
+    border-radius: 8px;
+    background: var(--primary-action-bg);
+    color: var(--primary-action-text);
+    font: 700 10px var(--font-ui);
+    cursor: pointer;
+  }
+  .duplicate-card button:hover:not(:disabled) {
+    background: var(--primary-action-hover);
+  }
+  .duplicate-card button:disabled {
+    opacity: 0.58;
+    cursor: wait;
+  }
+  .spin {
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
   .dashboard-grid {
     display: grid;
     grid-template-columns: minmax(0, 1.8fr) minmax(250px, 1fr);
@@ -531,6 +620,14 @@
     }
     .stat-icon {
       display: none;
+    }
+    .duplicate-card {
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+    .duplicate-card button {
+      width: calc(100% - 50px);
+      margin-left: 50px;
     }
     .dashboard-grid {
       display: block;

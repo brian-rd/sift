@@ -1,4 +1,4 @@
-import type { DownloadFile, HistoryItem, Rule } from './types';
+import type { DownloadFile, DuplicateGroup, HistoryItem, Rule } from './types';
 
 const now = Date.now();
 
@@ -130,6 +130,31 @@ export const demoFiles: DownloadFile[] = [
     kind: 'text',
     suggestedFolders: ['Documents / Data'],
   },
+  {
+    path: 'C:\\Users\\you\\Downloads\\mountain-lake (1).jpg',
+    name: 'mountain-lake (1).jpg',
+    extension: 'jpg',
+    size: 4_820_000,
+    modifiedAt: now - 18 * 60_000,
+    createdAt: now - 18 * 60_000,
+    kind: 'image',
+    previewUrl:
+      'https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=1400&q=85',
+  },
+  {
+    path: 'C:\\Users\\you\\Downloads\\Q2-expense-report - Copy.pdf',
+    name: 'Q2-expense-report - Copy.pdf',
+    extension: 'pdf',
+    size: 1_860_000,
+    modifiedAt: now - 12 * 60_000,
+    createdAt: now - 12 * 60_000,
+    kind: 'pdf',
+  },
+];
+
+export const demoDuplicateGroups: DuplicateGroup[] = [
+  { size: demoFiles[0].size, files: [demoFiles[0], demoFiles[12]] },
+  { size: demoFiles[1].size, files: [demoFiles[1], demoFiles[13]] },
 ];
 
 export const demoRules: Rule[] = [

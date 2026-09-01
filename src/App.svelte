@@ -10,8 +10,10 @@
   import History from './components/History.svelte';
   import Settings from './components/Settings.svelte';
   import TrashReview from './components/TrashReview.svelte';
+  import DuplicateReview from './components/DuplicateReview.svelte';
   import type {
     DownloadFile,
+    DuplicateGroup,
     HistoryItem,
     PinnedDestination,
     Rule,
@@ -22,9 +24,10 @@
     TrashItem,
   } from './lib/types';
   import type { RuleMatch } from './lib/rules';
-  import { demoFiles, demoHistory, demoRules } from './lib/demo';
+  import { demoDuplicateGroups, demoFiles, demoHistory, demoRules } from './lib/demo';
   import {
     finalizeTrash,
+    findDuplicates as findDuplicateFilesBackend,
     getDefaultDestinations,
     getUserDisplayName,
     isTauri,
@@ -77,6 +80,10 @@
   let userName = '';
   let currentHour = new Date().getHours();
   let knownFilePaths = new Set<string>();
+  let duplicateGroups: DuplicateGroup[] = [];
+  let duplicateScanning = false;
+  let duplicateBusy = false;
+  let showDuplicates = false;
 
   $: greeting = personalisedGreeting(currentHour, userName);
 
@@ -232,6 +239,27 @@
     }
   }
 
+  async function findDuplicateFiles() {
+    if (duplicateScanning) return;
+    duplicateScanning = true;
+    try {
+      const groups = isTauri ? await findDuplicateFilesBackend(watchedFolder) : demoDuplicateGroups;
+      duplicateGroups = groups.map((group) => ({
+        ...group,
+        files: group.files.map((file) => withPreview(file)),
+      }));
+      if (!duplicateGroups.length) {
+        notify('No exact duplicate files found');
+        return;
+      }
+      showDuplicates = true;
+    } catch (error) {
+      notify(`Could not check for duplicates: ${error}`);
+    } finally {
+      duplicateScanning = false;
+    }
+  }
+
   function record(
     file: DownloadFile,
     action: HistoryItem['action'],
@@ -272,6 +300,39 @@
       },
       ...trashItems,
     ];
+  }
+
+  async function removeDuplicateCopies(copies: DownloadFile[]) {
+    if (!copies.length || duplicateBusy) return;
+    duplicateBusy = true;
+    const staged: DownloadFile[] = [];
+    let failure: unknown;
+    try {
+      for (const [index, file] of copies.entries()) {
+        const result = isTauri
+          ? await trashDownload(file.path)
+          : { operationId: Date.now() + index, source: file.path, destination: file.path };
+        addToTrash(file, result.operationId, result.destination ?? file.path);
+        record(file, 'Trashed', undefined, result.operationId, 'staged');
+        staged.push(file);
+      }
+    } catch (error) {
+      failure = error;
+    } finally {
+      const stagedPaths = new Set(staged.map((file) => file.path));
+      files = files.filter((file) => !stagedPaths.has(file.path));
+      duplicateBusy = false;
+    }
+
+    if (!staged.length) {
+      if (failure) notify(`Could not move duplicate copies: ${failure}`);
+      return;
+    }
+    showDuplicates = false;
+    notify(
+      `${staged.length} duplicate ${staged.length === 1 ? 'copy' : 'copies'} moved to Sift Trash${failure ? `; remaining files were left in place: ${failure}` : ''}`,
+    );
+    reviewTrash('review');
   }
 
   async function processTrash(
@@ -723,6 +784,8 @@
           onSift={() => (active = 'sift')}
           onRules={() => (active = 'rules')}
           onPreviewRules={() => (active = 'rules')}
+          {duplicateScanning}
+          onFindDuplicates={findDuplicateFiles}
         />
       </main>
     {:else if active === 'sift'}
@@ -783,6 +846,12 @@
 </div>
 
 {#if toast}<div class="toast" role="status">{toast}</div>{/if}
+{#if showDuplicates}<DuplicateReview
+    groups={duplicateGroups}
+    busy={duplicateBusy}
+    onClose={() => (showDuplicates = false)}
+    onRemove={removeDuplicateCopies}
+  />{/if}
 {#if showTrash}<TrashReview
     items={trashItems}
     intent={trashIntent}

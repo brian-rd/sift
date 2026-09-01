@@ -1,5 +1,5 @@
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
-import type { PinnedDestination, ScanResult, TrashItem } from './types';
+import type { DuplicateGroup, PinnedDestination, ScanResult, TrashItem } from './types';
 
 export const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
@@ -15,6 +15,10 @@ function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> 
 
 export async function scanDownloads(folder?: string): Promise<ScanResult> {
   return invoke<ScanResult>('scan_downloads', { folder: folder || null });
+}
+
+export async function findDuplicates(folder?: string) {
+  return invoke<DuplicateGroup[]>('find_duplicates', { folder: folder || null });
 }
 
 export async function moveDownload(source: string, destination: string) {

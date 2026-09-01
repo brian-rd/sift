@@ -16,6 +16,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"
 rusqlite = { version = "0.32", features = ["bundled"] }
 trash = "5"
 mime_guess = "2"

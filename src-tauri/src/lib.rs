@@ -3,9 +3,11 @@ compile_error!("Sift is a Windows-only desktop application.");
 
 use rusqlite::{params, Connection};
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use std::{
+    collections::HashMap,
     fs,
-    io::Read,
+    io::{BufReader, Read},
     path::{Path, PathBuf},
     process::Command,
     sync::Mutex,
@@ -44,7 +46,7 @@ impl Serialize for SiftError {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct DownloadFile {
     path: String,
@@ -57,6 +59,13 @@ struct DownloadFile {
     suggested_folder: Option<String>,
     matched_rule: Option<String>,
     preview_url: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DuplicateGroup {
+    size: u64,
+    files: Vec<DownloadFile>,
 }
 
 #[derive(Serialize)]
@@ -221,6 +230,92 @@ fn scan_downloads(folder: Option<String>, app: tauri::AppHandle) -> Result<ScanR
         total_bytes,
         skipped_incomplete,
     })
+}
+
+fn hash_file(path: &Path) -> Result<[u8; 32], std::io::Error> {
+    let mut file = BufReader::new(fs::File::open(path)?);
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let bytes_read = file.read(&mut buffer)?;
+        if bytes_read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..bytes_read]);
+    }
+    Ok(hasher.finalize().into())
+}
+
+fn is_generated_copy_name(name: &str) -> bool {
+    let stem = Path::new(name)
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or(name)
+        .to_lowercase();
+    if stem.ends_with(" - copy") || stem.ends_with(" copy") {
+        return true;
+    }
+    stem.strip_suffix(')')
+        .and_then(|value| value.rsplit_once(" ("))
+        .and_then(|(_, number)| number.parse::<u32>().ok())
+        .is_some_and(|number| (1..=999).contains(&number))
+}
+
+fn group_duplicate_candidates(files: Vec<DownloadFile>) -> Vec<DuplicateGroup> {
+    let mut by_size: HashMap<u64, Vec<DownloadFile>> = HashMap::new();
+    for file in files {
+        by_size.entry(file.size).or_default().push(file);
+    }
+
+    let mut groups = Vec::new();
+    for candidates in by_size.into_values().filter(|files| files.len() > 1) {
+        let mut by_hash: HashMap<[u8; 32], Vec<DownloadFile>> = HashMap::new();
+        for file in candidates {
+            if let Ok(hash) = hash_file(Path::new(&file.path)) {
+                by_hash.entry(hash).or_default().push(file);
+            }
+        }
+        for mut duplicates in by_hash.into_values().filter(|files| files.len() > 1) {
+            duplicates.sort_by(|left, right| {
+                is_generated_copy_name(&left.name)
+                    .cmp(&is_generated_copy_name(&right.name))
+                    .then(
+                        left.created_at
+                            .cmp(&right.created_at)
+                            .then(left.modified_at.cmp(&right.modified_at))
+                            .then_with(|| left.name.cmp(&right.name)),
+                    )
+            });
+            groups.push(DuplicateGroup {
+                size: duplicates[0].size,
+                files: duplicates,
+            });
+        }
+    }
+    groups.sort_by(|left, right| {
+        let recoverable = |group: &DuplicateGroup| {
+            group
+                .size
+                .saturating_mul(group.files.len().saturating_sub(1) as u64)
+        };
+        recoverable(right)
+            .cmp(&recoverable(left))
+            .then_with(|| left.files[0].name.cmp(&right.files[0].name))
+    });
+    groups
+}
+
+fn find_duplicate_groups(folder: Option<String>) -> Result<Vec<DuplicateGroup>, SiftError> {
+    let root = downloads_dir(folder)?;
+    let (files, _, _) = collect_download_files(&root)?;
+    Ok(group_duplicate_candidates(files))
+}
+
+#[tauri::command]
+async fn find_duplicates(folder: Option<String>) -> Result<Vec<DuplicateGroup>, SiftError> {
+    tauri::async_runtime::spawn_blocking(move || find_duplicate_groups(folder))
+        .await
+        .map_err(|error| SiftError::Message(format!("Duplicate scan stopped: {error}")))?
 }
 
 #[tauri::command]
@@ -763,6 +858,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             scan_downloads,
+            find_duplicates,
             read_text_preview,
             move_download,
             trash_download,
@@ -782,7 +878,8 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        find_recycle_item, is_app_undoable, restore_recycled_file, unix_millis, windows_path_key,
+        find_recycle_item, group_duplicate_candidates, is_app_undoable, is_generated_copy_name,
+        restore_recycled_file, unix_millis, windows_path_key, windows_shell_path, DownloadFile,
     };
     use std::{fs, path::Path, time::SystemTime};
 
@@ -799,6 +896,67 @@ mod tests {
             windows_path_key(Path::new(r"\\?\C:\Users\Brian\Downloads\File.txt")),
             windows_path_key(Path::new(r"c:\users\brian\downloads\file.txt"))
         );
+    }
+
+    #[test]
+    fn explorer_paths_remove_windows_extended_prefixes() {
+        assert_eq!(
+            windows_shell_path(Path::new(r"\\?\C:\Users\Brian\My Downloads\File.txt")),
+            r"C:\Users\Brian\My Downloads\File.txt"
+        );
+        assert_eq!(
+            windows_shell_path(Path::new(r"\\?\UNC\server\share\File.txt")),
+            r"\\server\share\File.txt"
+        );
+    }
+
+    #[test]
+    fn duplicate_groups_require_matching_file_contents() {
+        let root = std::env::temp_dir().join(format!(
+            "sift-duplicate-test-{}",
+            unix_millis(SystemTime::now())
+        ));
+        fs::create_dir(&root).expect("create duplicate test folder");
+        let original = root.join("original.txt");
+        let copy = root.join("original (1).txt");
+        let same_size = root.join("same-size.txt");
+        fs::write(&original, "same").expect("write original");
+        fs::write(&copy, "same").expect("write copy");
+        fs::write(&same_size, "nope").expect("write different same-size file");
+
+        let file = |path: &Path, created_at: u64| DownloadFile {
+            path: windows_shell_path(path),
+            name: path.file_name().unwrap().to_string_lossy().into_owned(),
+            extension: "txt".into(),
+            size: 4,
+            modified_at: created_at,
+            created_at,
+            kind: "text".into(),
+            suggested_folder: None,
+            matched_rule: None,
+            preview_url: None,
+        };
+        let groups = group_duplicate_candidates(vec![
+            file(&copy, 0),
+            file(&same_size, 3),
+            file(&original, 1),
+        ]);
+
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].files.len(), 2);
+        assert_eq!(groups[0].files[0].name, "original.txt");
+        assert_eq!(groups[0].files[1].name, "original (1).txt");
+
+        fs::remove_dir_all(root).expect("remove duplicate test folder");
+    }
+
+    #[test]
+    fn generated_copy_names_are_recognised() {
+        assert!(is_generated_copy_name("photo (1).jpg"));
+        assert!(is_generated_copy_name("photo (27).jpg"));
+        assert!(is_generated_copy_name("photo - Copy.jpg"));
+        assert!(!is_generated_copy_name("photo.jpg"));
+        assert!(!is_generated_copy_name("holiday (2024).jpg"));
     }
 
     #[test]
