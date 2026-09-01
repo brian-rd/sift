@@ -23,3 +23,9 @@ export function formatDate(timestamp: number): string {
     minute: '2-digit',
   }).format(timestamp);
 }
+
+export function formatWindowsPath(path: string): string {
+  if (path.startsWith('\\\\?\\UNC\\')) return `\\\\${path.slice(8)}`;
+  if (path.startsWith('\\\\?\\')) return path.slice(4);
+  return path;
+}

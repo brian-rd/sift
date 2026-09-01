@@ -1,7 +1,7 @@
 <script lang="ts">
   import { CheckSquare, FolderClock, MousePointer2, RotateCcw, Trash2, X } from '@lucide/svelte';
   import type { TrashItem } from '../lib/types';
-  import { formatBytes, formatDate } from '../lib/format';
+  import { formatBytes, formatDate, formatWindowsPath } from '../lib/format';
   import FileIcon from './FileIcon.svelte';
   import Tooltip from './Tooltip.svelte';
 
@@ -91,7 +91,9 @@
             <div class="file-copy">
               <Tooltip text={item.name}><strong>{item.name}</strong></Tooltip><span
                 >{formatBytes(item.size)} · Modified {formatDate(item.modifiedAt)}</span
-              ><Tooltip text={item.originalPath}><small>{item.originalPath}</small></Tooltip>
+              ><Tooltip text={formatWindowsPath(item.originalPath)}
+                ><small>{formatWindowsPath(item.originalPath)}</small></Tooltip
+              >
             </div>
             <button class="restore" on:click={() => onRestore([item.operationId])} disabled={busy}
               ><RotateCcw size={14} /> Undo</button

@@ -16,6 +16,7 @@
   import type { PinnedDestination, ShortcutAction, ShortcutBindings, ThemePreference } from '../lib/types';
   import { DEFAULT_SHORTCUTS, isBindableCode, shortcutLabel } from '../lib/shortcuts';
   import Tooltip from './Tooltip.svelte';
+  import { formatWindowsPath } from '../lib/format';
 
   export let watchedFolder: string;
   export let watchEnabled: boolean;
@@ -39,11 +40,7 @@
   let capturing: ShortcutAction | null = null;
   let shortcutError = '';
 
-  $: displayWatchedFolder = watchedFolder.startsWith('\\\\?\\UNC\\')
-    ? `\\\\${watchedFolder.slice(8)}`
-    : watchedFolder.startsWith('\\\\?\\')
-      ? watchedFolder.slice(4)
-      : watchedFolder;
+  $: displayWatchedFolder = formatWindowsPath(watchedFolder);
 
   const shortcutRows: { action: ShortcutAction; name: string; description: string }[] = [
     { action: 'keep', name: 'Keep here', description: 'Leave the file in Downloads' },

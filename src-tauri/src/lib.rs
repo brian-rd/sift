@@ -136,17 +136,21 @@ fn downloads_dir(folder: Option<String>) -> Result<PathBuf, SiftError> {
     Ok(canonical)
 }
 
-#[tauri::command]
-fn scan_downloads(folder: Option<String>, app: tauri::AppHandle) -> Result<ScanResult, SiftError> {
-    let root = downloads_dir(folder)?;
-    app.asset_protocol_scope()
-        .allow_directory(&root, false)
-        .map_err(|error| SiftError::Message(format!("Could not enable previews: {error}")))?;
+fn windows_shell_path(path: &Path) -> String {
+    let value = path.to_string_lossy().replace('/', "\\");
+    value
+        .strip_prefix(r"\\?\UNC\")
+        .map(|path| format!(r"\\{path}"))
+        .or_else(|| value.strip_prefix(r"\\?\").map(str::to_owned))
+        .unwrap_or(value)
+}
+
+fn collect_download_files(root: &Path) -> Result<(Vec<DownloadFile>, u64, u32), SiftError> {
     let mut files = Vec::new();
     let mut total_bytes = 0;
     let mut skipped_incomplete = 0;
 
-    for entry in fs::read_dir(&root)? {
+    for entry in fs::read_dir(root)? {
         let entry = match entry {
             Ok(value) => value,
             Err(_) => continue,
@@ -188,7 +192,7 @@ fn scan_downloads(folder: Option<String>, app: tauri::AppHandle) -> Result<ScanR
         }
         total_bytes += metadata.len();
         files.push(DownloadFile {
-            path: path.to_string_lossy().into_owned(),
+            path: windows_shell_path(&path),
             name,
             extension: extension.clone(),
             size: metadata.len(),
@@ -200,9 +204,19 @@ fn scan_downloads(folder: Option<String>, app: tauri::AppHandle) -> Result<ScanR
             preview_url: None,
         });
     }
+    Ok((files, total_bytes, skipped_incomplete))
+}
+
+#[tauri::command]
+fn scan_downloads(folder: Option<String>, app: tauri::AppHandle) -> Result<ScanResult, SiftError> {
+    let root = downloads_dir(folder)?;
+    app.asset_protocol_scope()
+        .allow_directory(&root, false)
+        .map_err(|error| SiftError::Message(format!("Could not enable previews: {error}")))?;
+    let (mut files, total_bytes, skipped_incomplete) = collect_download_files(&root)?;
     files.sort_by(|a, b| b.modified_at.cmp(&a.modified_at));
     Ok(ScanResult {
-        folder: root.to_string_lossy().into_owned(),
+        folder: windows_shell_path(&root),
         files,
         total_bytes,
         skipped_incomplete,
@@ -277,13 +291,9 @@ fn is_app_undoable(action: &str) -> bool {
 }
 
 fn windows_path_key(path: &Path) -> String {
-    let value = path.to_string_lossy().replace('/', "\\");
-    let value = value
-        .strip_prefix(r"\\?\UNC\")
-        .map(|path| format!(r"\\{path}"))
-        .or_else(|| value.strip_prefix(r"\\?\").map(str::to_owned))
-        .unwrap_or(value);
-    value.trim_end_matches('\\').to_lowercase()
+    windows_shell_path(path)
+        .trim_end_matches('\\')
+        .to_lowercase()
 }
 
 fn find_recycle_item(
@@ -622,8 +632,9 @@ fn undo_operation(operation_id: i64, state: State<'_, AppState>) -> Result<(), S
 #[tauri::command]
 fn reveal_download(path: String) -> Result<(), SiftError> {
     let file = PathBuf::from(path).canonicalize()?;
-    Command::new("explorer")
-        .arg(format!("/select,{}", file.display()))
+    Command::new("explorer.exe")
+        .arg("/select,")
+        .arg(windows_shell_path(&file))
         .spawn()?;
     Ok(())
 }
@@ -636,7 +647,9 @@ fn open_download(path: String) -> Result<(), SiftError> {
             "Only regular files can be opened".into(),
         ));
     }
-    Command::new("explorer").arg(file).spawn()?;
+    Command::new("explorer.exe")
+        .arg(windows_shell_path(&file))
+        .spawn()?;
     Ok(())
 }
 
